@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>House Release Tracker — Estela Living</title>
+<link rel="stylesheet" href="assets/styles.css?v=1">
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>Estela Living</h1>
+    <div class="subtitle">House Release Tracker</div>
+  </div>
+  <div class="updated" id="updatedAt"></div>
+</div>
+
+<div class="container">
+
+  <div class="summary-row">
+    <div class="summary-tile overdue">
+      <div class="count" id="countOverdue">0</div>
+      <div class="label">Overdue</div>
+    </div>
+    <div class="summary-tile approaching">
+      <div class="count" id="countApproaching">0</div>
+      <div class="label">Approaching</div>
+    </div>
+    <div class="summary-tile ontrack">
+      <div class="count" id="countOntrack">0</div>
+      <div class="label">On Track</div>
+    </div>
+  </div>
+
+  <div class="card" style="padding: 14px;">
+    <input class="search-box" id="search" type="text" placeholder="Search address, house #, or PM…">
+    <div class="filter-row">
+      <select id="filterStatus">
+        <option value="">All Statuses</option>
+        <option value="overdue">Overdue</option>
+        <option value="approaching">Approaching (7 days)</option>
+        <option value="ontrack">On Track</option>
+      </select>
+      <select id="filterStage">
+        <option value="">All Stages</option>
+        <option value="F">F — Foundation</option>
+        <option value="L">L — Lumber/Framing</option>
+        <option value="O">O — Cabinets/Trim</option>
+        <option value="Q">Q — Final Clean</option>
+      </select>
+      <select id="filterDev">
+        <option value="">All Developments</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="legend">
+    Showing houses currently under construction (Released). For each Work Order stage, the tracker flags a house
+    when the milestone that gates the <b>next</b> stage release is overdue or due within 7 days:
+    <b>F→L</b> watches Pour Slab / Drying Home, <b>L→O</b> watches Drywall / Cabinets, <b>O→Q</b> watches Cabinets / Final Clean.
+    Stage Q is the final stage and needs no further release.
+  </div>
+
+  <div class="results-count" id="resultsCount"></div>
+  <div id="list"></div>
+  <div id="emptyState" class="empty-state" style="display:none;">No houses match your search/filters.</div>
+
+</div>
+
+<script src="assets/houses-data.js?v=1"></script>
+<script src="assets/dashboard.js?v=1"></script>
+</body>
+</html>
