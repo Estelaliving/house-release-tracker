@@ -163,6 +163,7 @@
       meta.className = 'house-meta';
       meta.innerHTML =
         '<span>#' + h.houseNumber + '</span>' +
+        '<span>Comp ' + (h.comp || '—') + '</span>' +
         '<span>' + (developmentNames[h.dev] || h.dev) + '</span>' +
         '<span>' + h.model + (h.elevCode ? '/' + h.elevCode : '') + '</span>' +
         '<span>PM: ' + (h.pm || '—') + '</span>';
