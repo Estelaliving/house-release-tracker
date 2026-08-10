@@ -120,6 +120,58 @@ a { color: var(--accent); text-decoration: none; }
   font-family: inherit;
 }
 
+.multiselect {
+  position: relative;
+  flex: 1;
+  min-width: 140px;
+}
+
+.multiselect-toggle {
+  width: 100%;
+  text-align: left;
+  padding: 9px 10px;
+  font-size: 13px;
+  border: 1px solid var(--slate-200);
+  border-radius: 8px;
+  background: var(--slate-50);
+  color: var(--navy);
+  font-family: inherit;
+  cursor: pointer;
+}
+.multiselect-toggle:after { content: "▾"; float: right; color: var(--slate-500); }
+.multiselect.open .multiselect-toggle { border-color: var(--accent); }
+
+.multiselect-panel {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 100%;
+  max-height: 220px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid var(--slate-200);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 6px;
+  z-index: 30;
+}
+.multiselect.open .multiselect-panel { display: block; }
+
+.multiselect-option {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 8px;
+  font-size: 13px;
+  color: var(--navy);
+  border-radius: 6px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.multiselect-option:hover { background: var(--slate-100); }
+.multiselect-option input { margin: 0; }
+
 .results-count {
   font-size: 12px;
   color: var(--slate-500);

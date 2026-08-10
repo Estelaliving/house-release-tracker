@@ -71,11 +71,67 @@
     return 'On track';
   }
 
+  var allMultiSelects = [];
+  function closeAllMultiSelects() {
+    allMultiSelects.forEach(function (r) { r.classList.remove('open'); });
+  }
+  document.addEventListener('click', function (e) {
+    allMultiSelects.forEach(function (r) {
+      if (!r.contains(e.target)) r.classList.remove('open');
+    });
+  });
+
+  // Checkbox-based multi-select: shows "N selected" once any option is checked,
+  // otherwise behaves like an unfiltered "All" state.
+  function initMultiSelect(rootId, allLabel, onChangeCb) {
+    var root = document.getElementById(rootId);
+    var toggle = root.querySelector('.multiselect-toggle');
+    var panel = root.querySelector('.multiselect-panel');
+    var selected = {};
+
+    function wireCheckbox(cb) {
+      cb.addEventListener('change', function () {
+        if (cb.checked) selected[cb.value] = true;
+        else delete selected[cb.value];
+        updateToggleLabel();
+        onChangeCb();
+      });
+    }
+    Array.prototype.forEach.call(panel.querySelectorAll('input[type=checkbox]'), wireCheckbox);
+
+    function addOption(value, label) {
+      var opt = document.createElement('label');
+      opt.className = 'multiselect-option';
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.value = value;
+      wireCheckbox(cb);
+      opt.appendChild(cb);
+      opt.appendChild(document.createTextNode(' ' + label));
+      panel.appendChild(opt);
+    }
+
+    function updateToggleLabel() {
+      var keys = Object.keys(selected);
+      toggle.textContent = keys.length ? (keys.length + ' selected') : allLabel;
+    }
+    updateToggleLabel();
+
+    toggle.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var wasOpen = root.classList.contains('open');
+      closeAllMultiSelects();
+      if (!wasOpen) root.classList.add('open');
+    });
+
+    allMultiSelects.push(root);
+    return { addOption: addOption, getSelected: function () { return Object.keys(selected); } };
+  }
+
   var houses = (window.HousesData && window.HousesData.houses) || [];
   var developmentNames = (window.HousesData && window.HousesData.developmentNames) || {};
 
   var elSearch = document.getElementById('search');
-  var elFilterStatus = document.getElementById('filterStatus');
   var elFilterStage = document.getElementById('filterStage');
   var elFilterDev = document.getElementById('filterDev');
   var elList = document.getElementById('list');
@@ -94,6 +150,16 @@
     opt.value = code;
     opt.textContent = developmentNames[code] || code;
     elFilterDev.appendChild(opt);
+  });
+
+  var statusMultiSelect = initMultiSelect('filterStatus', 'All Statuses', function () { render(); });
+  var compMultiSelect = initMultiSelect('filterComp', 'All Companies', function () { render(); });
+
+  // Populate company filter
+  var compSet = {};
+  houses.forEach(function (h) { if (h.comp) compSet[h.comp] = true; });
+  Object.keys(compSet).sort().forEach(function (code) {
+    compMultiSelect.addOption(code, 'Comp ' + code);
   });
 
   if (window.HousesData && window.HousesData.lastUpdated) {
@@ -118,14 +184,16 @@
 
   function render() {
     var q = elSearch.value.trim().toLowerCase();
-    var statusFilter = elFilterStatus.value;
+    var statusFilters = statusMultiSelect.getSelected();
     var stageFilter = elFilterStage.value;
     var devFilter = elFilterDev.value;
+    var compFilters = compMultiSelect.getSelected();
 
     var filtered = evaluated.filter(function (h) {
-      if (statusFilter && h.status !== statusFilter) return false;
+      if (statusFilters.length && statusFilters.indexOf(h.status) === -1) return false;
       if (stageFilter && h.stage !== stageFilter) return false;
       if (devFilter && h.dev !== devFilter) return false;
+      if (compFilters.length && compFilters.indexOf(h.comp) === -1) return false;
       if (q) {
         var hay = [h.address, h.houseNumber, h.pm, h.buyer].join(' ').toLowerCase();
         if (hay.indexOf(q) === -1) return false;
@@ -205,7 +273,6 @@
   }
 
   elSearch.addEventListener('input', render);
-  elFilterStatus.addEventListener('change', render);
   elFilterStage.addEventListener('change', render);
   elFilterDev.addEventListener('change', render);
 

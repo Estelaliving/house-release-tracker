@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>House Release Tracker — Estela Living</title>
-<link rel="stylesheet" href="assets/styles.css?v=1">
+<link rel="stylesheet" href="assets/styles.css?v=2">
 </head>
 <body>
 
@@ -36,12 +36,14 @@
   <div class="card" style="padding: 14px;">
     <input class="search-box" id="search" type="text" placeholder="Search address, house #, or PM…">
     <div class="filter-row">
-      <select id="filterStatus">
-        <option value="">All Statuses</option>
-        <option value="overdue">Overdue</option>
-        <option value="approaching">Approaching (7 days)</option>
-        <option value="ontrack">On Track</option>
-      </select>
+      <div class="multiselect" id="filterStatus">
+        <button type="button" class="multiselect-toggle">All Statuses</button>
+        <div class="multiselect-panel">
+          <label class="multiselect-option"><input type="checkbox" value="overdue"> Overdue</label>
+          <label class="multiselect-option"><input type="checkbox" value="approaching"> Approaching (7 days)</label>
+          <label class="multiselect-option"><input type="checkbox" value="ontrack"> On Track</label>
+        </div>
+      </div>
       <select id="filterStage">
         <option value="">All Stages</option>
         <option value="F">F — Foundation</option>
@@ -52,6 +54,10 @@
       <select id="filterDev">
         <option value="">All Developments</option>
       </select>
+      <div class="multiselect" id="filterComp">
+        <button type="button" class="multiselect-toggle">All Companies</button>
+        <div class="multiselect-panel"></div>
+      </div>
     </div>
   </div>
 
@@ -69,6 +75,6 @@
 </div>
 
 <script src="assets/houses-data.js?v=4"></script>
-<script src="assets/dashboard.js?v=2"></script>
+<script src="assets/dashboard.js?v=4"></script>
 </body>
 </html>
