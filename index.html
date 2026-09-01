@@ -1,80 +1,1220 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>House Release Tracker — Estela Living</title>
-<link rel="stylesheet" href="assets/styles.css?v=2">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>House Release Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+  :root {
+    --bg: #eef0ec;
+    --surface: #ffffff;
+    --surface-2: #e6e9e2;
+    --text: #1c2024;
+    --text-muted: #5b6570;
+    --border: #d9dcd3;
+    --accent: #24435f;
+    --accent-soft: #e0e8ee;
+    --critical: #ac4128;
+    --critical-soft: #f6e5e0;
+    --warning: #a8752c;
+    --warning-soft: #f5ecd9;
+    --ok: #3f6b47;
+    --ok-soft: #e3ece3;
+    --nobudget: #7e3fa3;
+    --nobudget-soft: #f1e6f7;
+    --focus: #24435f;
+    --shadow: 0 1px 2px rgba(28,32,36,0.06), 0 4px 14px rgba(28,32,36,0.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #15191d;
+      --surface: #1e2429;
+      --surface-2: #262d33;
+      --text: #e9ebe7;
+      --text-muted: #99a2aa;
+      --border: #313941;
+      --accent: #7aa7cc;
+      --accent-soft: #21313f;
+      --critical: #e08768;
+      --critical-soft: #3a251f;
+      --warning: #dcb26e;
+      --warning-soft: #3a2f1a;
+      --ok: #8fbd94;
+      --ok-soft: #223227;
+      --nobudget: #c98fe0;
+      --nobudget-soft: #35243d;
+      --focus: #7aa7cc;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 4px 18px rgba(0,0,0,0.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #15191d;
+    --surface: #1e2429;
+    --surface-2: #262d33;
+    --text: #e9ebe7;
+    --text-muted: #99a2aa;
+    --border: #313941;
+    --accent: #7aa7cc;
+    --accent-soft: #21313f;
+    --critical: #e08768;
+    --critical-soft: #3a251f;
+    --warning: #dcb26e;
+    --warning-soft: #3a2f1a;
+    --ok: #8fbd94;
+    --ok-soft: #223227;
+    --nobudget: #c98fe0;
+    --nobudget-soft: #35243d;
+    --focus: #7aa7cc;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 4px 18px rgba(0,0,0,0.35);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 36px 20px 80px;
+  }
+
+  .eyebrow {
+    font-family: "Barlow Condensed", ui-sans-serif, sans-serif;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-size: 12.5px;
+    color: var(--accent);
+  }
+  h1 {
+    font-family: "Barlow Condensed", ui-sans-serif, sans-serif;
+    font-weight: 700;
+    font-size: clamp(30px, 5vw, 42px);
+    line-height: 1.05;
+    letter-spacing: 0.01em;
+    margin: 6px 0 8px;
+    text-wrap: balance;
+  }
+  .subtitle {
+    color: var(--text-muted);
+    font-size: 14.5px;
+    max-width: 66ch;
+  }
+  .subtitle b { color: var(--text); font-weight: 600; }
+
+  .summary-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 22px;
+  }
+  .summary-tile {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 16px;
+    box-shadow: var(--shadow);
+    min-width: 128px;
+  }
+  .summary-tile .num {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 22px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+  .summary-tile .label {
+    font-size: 11.5px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-top: 2px;
+  }
+  .summary-tile.tone-critical .num { color: var(--critical); }
+  .summary-tile.tone-warning .num { color: var(--warning); }
+  .summary-tile.tone-accent .num { color: var(--accent); }
+  .summary-tile.tone-nobudget .num { color: var(--nobudget); }
+  .nobudget-badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: var(--nobudget-soft);
+    color: var(--nobudget);
+    margin-top: 5px;
+  }
+  .filter-bar label.checkbox-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+
+  .conn-banner {
+    display: none;
+    margin-top: 18px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    background: var(--warning-soft);
+    color: var(--warning);
+    font-size: 13.5px;
+    border: 1px solid var(--warning);
+  }
+  .conn-banner.show { display: block; }
+
+  .queue {
+    margin-top: 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .house {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .house-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .house-id {
+    font-family: "Barlow Condensed", sans-serif;
+    font-weight: 600;
+    font-size: 12.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .house-address {
+    font-size: 19px;
+    font-weight: 600;
+    margin-top: 2px;
+    letter-spacing: -0.01em;
+  }
+  .house-meta {
+    margin-top: 5px;
+    font-size: 13px;
+    color: var(--text-muted);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+  }
+  .house-meta span:not(:last-child)::after {
+    content: "·";
+    margin-left: 10px;
+    color: var(--border);
+  }
+
+  .eta-badge {
+    flex: none;
+    text-align: right;
+    white-space: nowrap;
+  }
+  .eta-pill {
+    display: inline-block;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 12.5px;
+    font-weight: 500;
+    padding: 4px 10px;
+    border-radius: 999px;
+  }
+  .eta-pill.critical { background: var(--critical-soft); color: var(--critical); }
+  .eta-pill.warning { background: var(--warning-soft); color: var(--warning); }
+  .eta-pill.ok { background: var(--accent-soft); color: var(--accent); }
+  .eta-date {
+    display: block;
+    margin-top: 5px;
+    font-size: 11.5px;
+    color: var(--text-muted);
+  }
+  .house-progress {
+    display: block;
+    margin-top: 6px;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11.5px;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .checklist-section {
+    padding: 12px 20px 20px;
+  }
+
+  .stage {
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    margin-top: 10px;
+    overflow: hidden;
+  }
+  .stage:first-child { margin-top: 0; }
+  .stage > summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--surface-2);
+    font-family: "Barlow Condensed", sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--text);
+  }
+  .stage > summary::-webkit-details-marker { display: none; }
+  .stage > summary::before {
+    content: "▸";
+    display: inline-block;
+    margin-right: 8px;
+    color: var(--text-muted);
+    transition: transform 0.15s ease;
+    font-size: 11px;
+  }
+  .stage[open] > summary::before { transform: rotate(90deg); }
+  .stage > summary .stage-count {
+    font-family: "IBM Plex Mono", monospace;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--text-muted);
+    font-size: 12.5px;
+  }
+  .stage-body { padding: 10px 14px 14px; }
+
+  .code-group { margin-top: 12px; }
+  .code-group:first-child { margin-top: 0; }
+  .code-group-label {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 5px;
+  }
+  .code-group-label .code {
+    font-family: "IBM Plex Mono", monospace;
+    color: var(--accent);
+    margin-right: 6px;
+  }
+
+  .items {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .item {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+  }
+  .item-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    padding: 8px 9px;
+  }
+  .item input[type="checkbox"] {
+    margin-top: 3px;
+    width: 16px;
+    height: 16px;
+    accent-color: var(--ok);
+    flex: none;
+    cursor: pointer;
+  }
+  .item-code {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    color: var(--text-muted);
+    padding-top: 2px;
+    flex: none;
+    min-width: 44px;
+  }
+  .item-text {
+    flex: 1;
+    font-size: 13.5px;
+    padding-top: 1px;
+    word-break: break-word;
+  }
+  .item-amount {
+    font-family: "IBM Plex Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 12.5px;
+    color: var(--text-muted);
+    padding-top: 2px;
+    flex: none;
+    white-space: nowrap;
+  }
+  .edit-fields {
+    display: flex;
+    flex: 1;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .item-edit-code {
+    width: 78px;
+    flex: none;
+  }
+  .item-edit-input {
+    flex: 1;
+    min-width: 140px;
+  }
+  .item-edit-amount {
+    width: 100px;
+    flex: none;
+  }
+  .item-edit-code, .item-edit-input, .item-edit-amount {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-size: 13.5px;
+    padding: 3px 6px;
+    border-radius: 5px;
+    border: 1px solid var(--accent);
+    background: var(--surface);
+    color: var(--text);
+  }
+  .item-edit-code, .item-edit-amount { font-family: "IBM Plex Mono", monospace; }
+  .item.checked .item-text { color: var(--text-muted); text-decoration: line-through; }
+  .item.has-note { border-color: var(--warning); }
+  .item-actions {
+    display: flex;
+    gap: 2px;
+    flex: none;
+  }
+  .icon-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 12.5px;
+    padding: 3px 7px;
+    border-radius: 5px;
+    font-family: "IBM Plex Sans", sans-serif;
+    white-space: nowrap;
+  }
+  .icon-btn:hover { background: var(--surface-2); color: var(--text); }
+  .icon-btn.danger:hover { background: var(--critical-soft); color: var(--critical); }
+  .icon-btn.active { background: var(--accent-soft); color: var(--accent); }
+  .icon-btn:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 1px;
+  }
+  .item-notes-wrap {
+    padding: 0 9px 9px 53px;
+  }
+  .item-notes {
+    width: 100%;
+    resize: vertical;
+    min-height: 32px;
+    font-family: "IBM Plex Sans", sans-serif;
+    font-size: 13px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+  }
+  .item-notes::placeholder { color: var(--text-muted); }
+
+  .add-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .add-row input[type="text"] {
+    flex: 1;
+    padding: 8px 10px;
+    border-radius: 7px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font-family: "IBM Plex Sans", sans-serif;
+    font-size: 13.5px;
+  }
+  .add-row input[type="text"]::placeholder { color: var(--text-muted); }
+  .add-btn {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 500;
+    font-size: 13.5px;
+    background: var(--accent);
+    color: var(--surface);
+    border: none;
+    padding: 8px 14px;
+    border-radius: 7px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .add-btn:hover { opacity: 0.92; }
+
+  footer.note {
+    margin-top: 28px;
+    font-size: 12.5px;
+    color: var(--text-muted);
+    max-width: 66ch;
+  }
+
+  .filter-bar {
+    margin-top: 24px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+  .filter-bar input[type="text"], .filter-bar select {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-size: 13.5px;
+    padding: 8px 10px;
+    border-radius: 7px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+  }
+  .filter-bar input[type="text"] { flex: 1; min-width: 160px; }
+  .filter-count {
+    font-size: 12.5px;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+    margin-left: auto;
+    white-space: nowrap;
+  }
+  .stage-pill {
+    display: inline-block;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+  .eta-badge .stage-pill { display: block; margin-bottom: 5px; }
+  .buyer-tag {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .sync-note {
+    font-size: 11.5px;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+
+  @media (max-width: 560px) {
+    .house-head { flex-direction: column; }
+    .eta-badge { text-align: left; }
+    .item-notes-wrap { padding-left: 9px; }
+  }
+</style>
 </head>
 <body>
 
-<div class="header">
-  <div>
-    <h1>Estela Living</h1>
-    <div class="subtitle">House Release Tracker</div>
-  </div>
-  <div class="updated" id="updatedAt"></div>
-</div>
-
-<div class="container">
+<div class="wrap">
+  <div class="eyebrow">House Release Tracker</div>
+  <h1>Stage Release Queue</h1>
+  <p class="subtitle">Every house past permit, tracked through its <b>F → L → O → Q</b> release milestones — dates ported from house-release-tracker, checklist from <b>CHECKLIST V2.xlsx</b>. Spec/model homes stop at O; only sold houses need a Q (custom options) release. Check off, edit, comment on, or remove any line as it's reviewed.</p>
 
   <div class="summary-row">
-    <div class="summary-tile overdue">
-      <div class="count" id="countOverdue">0</div>
-      <div class="label">Overdue</div>
+    <div class="summary-tile tone-critical">
+      <div class="num" id="sumOverdue">–</div>
+      <div class="label">Overdue release</div>
     </div>
-    <div class="summary-tile approaching">
-      <div class="count" id="countApproaching">0</div>
-      <div class="label">Approaching</div>
+    <div class="summary-tile tone-warning">
+      <div class="num" id="sumSoon">–</div>
+      <div class="label">Due this week</div>
     </div>
-    <div class="summary-tile ontrack">
-      <div class="count" id="countOntrack">0</div>
-      <div class="label">On Track</div>
+    <div class="summary-tile">
+      <div class="num" id="sumHouses">–</div>
+      <div class="label">Houses tracked</div>
     </div>
-  </div>
-
-  <div class="card" style="padding: 14px;">
-    <input class="search-box" id="search" type="text" placeholder="Search address, house #, or PM…">
-    <div class="filter-row">
-      <div class="multiselect" id="filterStatus">
-        <button type="button" class="multiselect-toggle">All Statuses</button>
-        <div class="multiselect-panel">
-          <label class="multiselect-option"><input type="checkbox" value="overdue"> Overdue</label>
-          <label class="multiselect-option"><input type="checkbox" value="approaching"> Approaching (7 days)</label>
-          <label class="multiselect-option"><input type="checkbox" value="ontrack"> On Track</label>
-        </div>
-      </div>
-      <select id="filterStage">
-        <option value="">All Stages</option>
-        <option value="F">F — Foundation</option>
-        <option value="L">L — Lumber/Framing</option>
-        <option value="O">O — Cabinets/Trim</option>
-        <option value="Q">Q — Final Clean</option>
-      </select>
-      <select id="filterDev">
-        <option value="">All Developments</option>
-      </select>
-      <div class="multiselect" id="filterComp">
-        <button type="button" class="multiselect-toggle">All Companies</button>
-        <div class="multiselect-panel"></div>
-      </div>
+    <div class="summary-tile tone-accent">
+      <div class="num" id="sumChecked">–</div>
+      <div class="label">Items reviewed</div>
+    </div>
+    <div class="summary-tile tone-nobudget">
+      <div class="num" id="sumNoBudget">–</div>
+      <div class="label">No budget entered</div>
     </div>
   </div>
 
-  <div class="legend">
-    Showing houses currently under construction (Released). For each Work Order stage, the tracker flags a house
-    when the milestone that gates the <b>next</b> stage release is overdue or due within 7 days:
-    <b>F→L</b> watches Pour Slab / Drying Home, <b>L→O</b> watches Drywall / Cabinets, <b>O→Q</b> watches Cabinets / Final Clean.
-    Stage Q is the final stage and needs no further release.
+  <div class="filter-bar">
+    <input type="text" id="fSearch" placeholder="Search address, lot, PM, buyer…">
+    <select id="fStage">
+      <option value="">All stages</option>
+      <option value="F">Stage F — Foundation</option>
+      <option value="L">Stage L — Framing</option>
+      <option value="O">Stage O — Trim/Finish</option>
+      <option value="Q">Stage Q — Final/Options</option>
+    </select>
+    <select id="fStatus">
+      <option value="">All statuses</option>
+      <option value="overdue">Overdue</option>
+      <option value="approaching">Due this week</option>
+      <option value="ontrack">On track</option>
+      <option value="done">Final stage</option>
+    </select>
+    <select id="fDev">
+      <option value="">All communities</option>
+    </select>
+    <label class="checkbox-toggle"><input type="checkbox" id="fNoBudget"> No budget only</label>
+    <span class="filter-count" id="filterCount"></span>
   </div>
 
-  <div class="results-count" id="resultsCount"></div>
-  <div id="list"></div>
-  <div id="emptyState" class="empty-state" style="display:none;">No houses match your search/filters.</div>
+  <div class="conn-banner" id="connBanner">Couldn't reach the shared database just now — your changes are still saved on this device and will sync once the connection is back.</div>
 
+  <div class="queue" id="queue"></div>
+  <p class="sync-note">Changes sync live to everyone with this link — no sign-in needed. Just a browser tab, like the permit tracker.</p>
+
+  <footer class="note">Houses and stage dates sourced from house-release-tracker. Checklist line items sourced from CHECKLIST V2.xlsx (Stage Z / F / O / L &amp; I / 1 cost codes) — the same template is applied to every house; the section matching its current release stage opens by default. Edit or remove any line that doesn't apply, or add a custom one at the bottom of a stage.</footer>
 </div>
 
-<script src="assets/houses-data.js?v=9"></script>
-<script src="assets/dashboard.js?v=4"></script>
+<script>
+(function () {
+  var DEV_NAMES = { SB: "Sawmill Branch", PC: "Palm Coast Scattered", SR: "Sabana Reserve", MO: "Marion Oaks", JF: "Juliette Falls", OW: "Ocala Waterways" };
+
+  var HOUSES = [{"id":"00400286","address":"265 Underwood Trl","comp":"003","dev":"PC","model":"BX2","elevCode":"A2","buyer":"SPEC","pm":"BATCHINSON","stage":"F","pourSlab":"","dryingHome":"","drywall":"","cabinets":"","finalClean":""},{"id":"00400262","address":"3 Largo Place","comp":"001","dev":"PC","model":"EXX","elevCode":"A2","buyer":"SPEC","pm":"JFRANTZ","stage":"F","pourSlab":"","dryingHome":"","drywall":"","cabinets":"","finalClean":""},{"id":"00400268","address":"30 Burning Ember Ln","comp":"001","dev":"PC","model":"BX2","elevCode":"A2","buyer":"SPEC","pm":"JFRANTZ","stage":"F","pourSlab":"2026-10-05","dryingHome":"2026-10-23","drywall":"2026-11-11","cabinets":"2026-11-25","finalClean":"2027-01-05"},{"id":"00600461","address":"104 Springwood Dr","comp":"001","dev":"SB","model":"M43","elevCode":"FAR","buyer":"Stroup, Jamie","pm":"JFRANTZ","stage":"F","pourSlab":"2026-10-23","dryingHome":"2026-11-12","drywall":"2026-12-03","cabinets":"2026-12-17","finalClean":"2027-01-25"},{"id":"00300267","address":"4360 SW 106th Pl","comp":"001","dev":"OW","model":"HX2","elevCode":"A2","buyer":"SPEC","pm":"MBEDAW","stage":"F","pourSlab":"","dryingHome":"","drywall":"","cabinets":"","finalClean":""},{"id":"00300266","address":"00 SW 106th Pl","comp":"001","dev":"OW","model":"EXX","elevCode":"A2","buyer":"SPEC","pm":"MBEDAW","stage":"F","pourSlab":"","dryingHome":"","drywall":"","cabinets":"","finalClean":""},{"id":"00400277","address":"16 Buffalo Meadow Ln","comp":"001","dev":"PC","model":"HX2","elevCode":"A2","buyer":"SPEC","pm":"JFRANTZ","stage":"F","pourSlab":"2026-09-30","dryingHome":"2026-10-20","drywall":"2026-11-06","cabinets":"2026-11-20","finalClean":"2026-12-30"},{"id":"00300273","address":"4981 SW 107th Loop","comp":"005","dev":"OW","model":"HX2","elevCode":"A2","buyer":"SPEC","pm":"JBEDAW","stage":"F","pourSlab":"2026-10-02","dryingHome":"2026-10-21","drywall":"2026-11-09","cabinets":"2026-11-23","finalClean":"2026-12-31"},{"id":"00400235","address":"91 Ferndale Ln","comp":"003","dev":"PC","model":"BX2","elevCode":"A2","buyer":"Mendonca, Luis","pm":"BATCHINSON","stage":"F","pourSlab":"2026-09-30","dryingHome":"2026-10-20","drywall":"2026-11-06","cabinets":"2026-11-20","finalClean":"2026-12-30"},{"id":"00300272","address":"5934 SW 116th Street Rd","comp":"002","dev":"OW","model":"HX2","elevCode":"A2","buyer":"SPEC","pm":"JBEDAW","stage":"F","pourSlab":"2026-09-29","dryingHome":"2026-10-16","drywall":"2026-11-04","cabinets":"2026-11-18","finalClean":"2026-12-28"},{"id":"00400259","address":"21 Utopian Ct","comp":"003","dev":"PC","model":"HX2","elevCode":"A2","buyer":"SPEC","pm":"BATCHINSON","stage":"F","pourSlab":"2026-09-25","dryingHome":"2026-10-15","drywall":"2026-11-03","cabinets":"2026-11-17","finalClean":"2026-12-23"},{"id":"00400282","address":"21 Lansing Lane","comp":"006","dev":"PC","model":"HX3","elevCode":"A2","buyer":"SPEC","pm":"JFRANTZ","stage":"F","pourSlab":"2026-09-25","dryingHome":"2026-10-15","drywall":"2026-11-03","cabinets":"2026-11-17","finalClean":"2026-12-23"},{"id":"00600470","address":"12 Patriot Ct","comp":"001","dev":"SB","model":"M53","elevCode":"FAR","buyer":"Moore, Jessica","pm":"JFRANTZ","stage":"F","pourSlab":"2026-09-14","dryingHome":"2026-10-02","drywall":"2026-10-21","cabinets":"2026-11-04","finalClean":"2026-12-10"},{"id":"00200269","address":"16674 SW 30th Terr","comp":"009","dev":"MO","model":"HX2","elevCode":"A2","buyer":"SPEC","pm":"MBEDAW","stage":"F","pourSlab":"2026-09-23","dryingHome":"2026-10-12","drywall":"2026-10-29","cabinets":"2026-11-12","finalClean":"2026-12-18"},{"id":"00200271","address":"16311 SW 26th Terrace Rd","comp":"009","dev":"MO","model":"HX2","elevCode":"A2","buyer":"SPEC","pm":"MBEDAW","stage":"F","pourSlab":"2026-10-09","dryingHome":"2026-10-28","drywall":"2026-11-16","cabinets":"2026-12-02","finalClean":"2027-01-08"},{"id":"00200270","address":"16673 SW 30th Terra","comp":"009","dev":"MO","model":"HX2","elevCode":"A2","buyer":"SPEC","pm":"MBEDAW","stage":"F","pourSlab":"2026-09-21","dryingHome":"2026-10-08","drywall":"2026-10-27","cabinets":"2026-11-10","finalClean":"2026-12-16"},{"id":"00300260","address":"4335 SW 108th PL","comp":"001","dev":"OW","model":"EXX","elevCode":"A2","buyer":"SPEC","pm":"JBEDAW","stage":"F","pourSlab":"2026-09-23","dryingHome":"2026-10-12","drywall":"2026-10-29","cabinets":"2026-11-12","finalClean":"2026-12-18"},{"id":"00300261","address":"4349 SW 108th PL","comp":"001","dev":"OW","model":"HX2","elevCode":"A2","buyer":"SPEC","pm":"JBEDAW","stage":"F","pourSlab":"2026-09-23","dryingHome":"2026-10-12","drywall":"2026-10-29","cabinets":"2026-11-12","finalClean":"2026-12-18"},{"id":"00200263","address":"2548 SW 168th Place","comp":"009","dev":"MO","model":"BX2","elevCode":"A2","buyer":"SPEC","pm":"MBEDAW","stage":"F","pourSlab":"2026-09-08","dryingHome":"2026-09-25","drywall":"2026-10-14","cabinets":"2026-10-28","finalClean":"2026-12-03"},{"id":"00400264","address":"194 BAYSIDE DR","comp":"001","dev":"PC","model":"HX3","elevCode":"A2","buyer":"Bubarth, Robert","pm":"JFRANTZ","stage":"F","pourSlab":"2026-09-09","dryingHome":"2026-09-29","drywall":"2026-10-16","cabinets":"2026-10-30","finalClean":"2026-12-07"},{"id":"00400265","address":"8 Burland Pl","comp":"003","dev":"PC","model":"EXX","elevCode":"A2","buyer":"SPEC","pm":"JFRANTZ","stage":"F","pourSlab":"2026-09-22","dryingHome":"2026-10-12","drywall":"2026-10-29","cabinets":"2026-11-12","finalClean":"2026-12-18"},{"id":"00300254","address":"3820 SW 113th PL","comp":"001","dev":"OW","model":"HX3","elevCode":"A2","buyer":"SPEC","pm":"JBEDAW","stage":"F","pourSlab":"2026-09-29","dryingHome":"2026-10-16","drywall":"2026-11-04","cabinets":"2026-11-18","finalClean":"2026-12-28"},{"id":"00200256","address":"12869 SW 38th Circle","comp":"009","dev":"MO","model":"HX2","elevCode":"A2","buyer":"SPEC","pm":"MBEDAW","stage":"F","pourSlab":"2026-09-02","dryingHome":"2026-09-22","drywall":"2026-10-09","cabinets":"2026-10-23","finalClean":"2026-11-30"},{"id":"00400253","address":"6 Uturn Ct","comp":"004","dev":"PC","model":"EXX","elevCode":"A2","buyer":"CATALANO, LISA","pm":"BATCHINSON","stage":"F","pourSlab":"2026-09-30","dryingHome":"2026-10-20","drywall":"2026-11-06","cabinets":"2026-11-20","finalClean":"2026-12-30"},{"id":"00200252","address":"318 Marion Oaks Golf Rd","comp":"009","dev":"MO","model":"HX2","elevCode":"A2","buyer":"SPEC","pm":"MBEDAW","stage":"L","pourSlab":"2026-09-02","dryingHome":"2026-09-22","drywall":"2026-10-09","cabinets":"2026-10-23","finalClean":"2026-11-30"},{"id":"00400257","address":"59 Riviera Dr","comp":"006","dev":"PC","model":"EXX","elevCode":"A2","buyer":"SPEC","pm":"BATCHINSON","stage":"F","pourSlab":"2026-08-14","dryingHome":"2026-09-14","drywall":"2026-10-01","cabinets":"2026-10-15","finalClean":"2026-11-18"},{"id":"00400258","address":"26 Birchshire Ln","comp":"004","dev":"PC","model":"BX2","elevCode":"A2","buyer":"SPEC","pm":"JFRANTZ","stage":"F","pourSlab":"2026-08-11","dryingHome":"2026-09-09","drywall":"2026-09-28","cabinets":"2026-10-12","finalClean":"2026-11-13"},{"id":"00400255","address":"5 Seriema Ct","comp":"006","dev":"PC","model":"EXX","elevCode":"A2","buyer":"SPEC","pm":"BATCHINSON","stage":"F","pourSlab":"2026-09-22","dryingHome":"2026-10-12","drywall":"2026-10-29","cabinets":"2026-11-12","finalClean":"2026-12-18"},{"id":"00300247","address":"10074 SW 41st Ave","comp":"002","dev":"OW","model":"HX2","elevCode":"A2","buyer":"Barrero Rodriguez, Ramiro","pm":"MBEDAW","stage":"L","pourSlab":"2026-08-07","dryingHome":"2026-09-16","drywall":"2026-10-05","cabinets":"2026-10-19","finalClean":"2026-11-20"},{"id":"00300245","address":"10866 SW 41st Ave","comp":"002","dev":"OW","model":"EX3","elevCode":"A2","buyer":"SPEC","pm":"MBEDAW","stage":"L","pourSlab":"2026-08-21","dryingHome":"2026-09-18","drywall":"2026-10-07","cabinets":"2026-10-21","finalClean":"2026-11-24"},{"id":"00300250","address":"6049 SW 116th Street Rd","comp":"002","dev":"OW","model":"HX2","elevCode":"A2","buyer":"SPEC","pm":"JBEDAW","stage":"L","pourSlab":"2026-09-29","dryingHome":"2026-10-16","drywall":"2026-11-04","cabinets":"2026-11-18","finalClean":"2026-12-28"},{"id":"00300251","address":"4980 SW 106th St","comp":"001","dev":"OW","model":"HX3","elevCode":"A2","buyer":"SPEC","pm":"JBEDAW","stage":"F","pourSlab":"2026-09-29","dryingHome":"2026-10-16","drywall":"2026-11-04","cabinets":"2026-11-18","finalClean":"2026-12-28"},{"id":"00400240","address":"47 Louisiana Dr","comp":"003","dev":"PC","model":"EXX","elevCode":"A2","buyer":"SPEC","pm":"JFRANTZ","stage":"L","pourSlab":"2026-07-30","dryingHome":"2026-08-31","drywall":"2026-09-18","cabinets":"2026-10-02","finalClean":"2026-11-05"},{"id":"00600468","address":"9 Patriot Ct","comp":"001","dev":"SB","model":"M53","elevCode":"TRA","buyer":"CANIPELLI, BRANDON","pm":"JFRANTZ","stage":"L","pourSlab":"2026-06-19","dryingHome":"2026-07-16","drywall":"2026-08-11","cabinets":"2026-09-10","finalClean":"2026-09-29"},{"id":"00400249","address":"106 Ramblewood Dr","comp":"009","dev":"PC","model":"BX2","elevCode":"A2","buyer":"SPEC","pm":"BATCHINSON","stage":"L","pourSlab":"2026-08-03","dryingHome":"2026-09-09","drywall":"2026-09-28","cabinets":"2026-10-12","finalClean":"2026-11-13"},{"id":"00300241","address":"9964 SW 39th Ter","comp":"009","dev":"OW","model":"EXX","elevCode":"A2","buyer":"SPEC","pm":"MBEDAW","stage":"L","pourSlab":"2026-06-25","dryingHome":"2026-07-23","drywall":"2026-08-19","cabinets":"2026-09-10","finalClean":"2026-10-14"},{"id":"00300233","address":"5907 SW 107th St","comp":"002","dev":"OW","model":"EXX","elevCode":"A2","buyer":"SPEC","pm":"MBEDAW","stage":"L","pourSlab":"2026-08-03","dryingHome":"2026-08-27","drywall":"2026-09-15","cabinets":"2026-09-29","finalClean":"2026-11-02"},{"id":"00300242","address":"4085 SW 111th Pl","comp":"009","dev":"OW","model":"EX3","elevCode":"A2","buyer":"SPEC","pm":"MBEDAW","stage":"F","pourSlab":"2026-08-06","dryingHome":"2026-09-16","drywall":"2026-10-05","cabinets":"2026-10-19","finalClean":"2026-11-20"},{"id":"00400243","address":"160 Laramie Dr","comp":"003","dev":"PC","model":"EX3","elevCode":"A2","buyer":"Herrera, Marlene","pm":"JFRANTZ","stage":"Q","pourSlab":"2026-07-24","dryingHome":"2026-08-12","drywall":"2026-09-11","cabinets":"2026-09-25","finalClean":"2026-10-29"},{"id":"00400244","address":"68 Lake Success Dr","comp":"007","dev":"PC","model":"HX3","elevCode":"A2","buyer":"SPEC","pm":"JFRANTZ","stage":"L","pourSlab":"2026-07-02","dryingHome":"2026-07-31","drywall":"2026-08-29","cabinets":"2026-09-15","finalClean":"2026-10-19"},{"id":"00400237","address":"17 Bonnie Ln","comp":"007","dev":"PC","model":"BX2","elevCode":"A2","buyer":"SPEC","pm":"JFRANTZ","stage":"L","pourSlab":"2026-07-16","dryingHome":"2026-08-05","drywall":"2026-08-29","cabinets":"2026-09-15","finalClean":"2026-10-19"},{"id":"00400238","address":"19 Bonnie Ln","comp":"003","dev":"PC","model":"MO3","elevCode":"TRA","buyer":"SPEC","pm":"JFRANTZ","stage":"O","pourSlab":"2026-07-16","dryingHome":"2026-07-31","drywall":"2026-08-14","cabinets":"2026-09-15","finalClean":"2026-10-19"},{"id":"00400239","address":"21 Bonnie Ln","comp":"007","dev":"PC","model":"HX2","elevCode":"A2","buyer":"SPEC","pm":"JFRANTZ","stage":"L","pourSlab":"2026-07-09","dryingHome":"2026-08-03","drywall":"2026-08-25","cabinets":"2026-09-21","finalClean":"2026-10-23"},{"id":"00400236","address":"98 Lee Dr","comp":"006","dev":"PC","model":"EX3","elevCode":"A2","buyer":"Austria, Sheena","pm":"JFRANTZ","stage":"L","pourSlab":"2026-07-02","dryingHome":"2026-08-10","drywall":"2026-09-11","cabinets":"2026-09-25","finalClean":"2026-10-29"},{"id":"00400230","address":"20 ZORLOU CT","comp":"006","dev":"PC","model":"HX2","elevCode":"A2","buyer":"SPEC","pm":"BATCHINSON","stage":"L","pourSlab":"2026-08-10","dryingHome":"2026-09-16","drywall":"2026-10-05","cabinets":"2026-10-19","finalClean":"2026-11-20"},{"id":"00400231","address":"56 Barkley Ln","comp":"009","dev":"PC","model":"HX3","elevCode":"A2","buyer":"GOHREND, ANDRONIK","pm":"JFRANTZ","stage":"O","pourSlab":"2026-07-02","dryingHome":"2026-07-28","drywall":"2026-08-14","cabinets":"2026-09-04","finalClean":"2026-10-09"},{"id":"00400229","address":"18 ZORLOU CT","comp":"009","dev":"PC","model":"EXX","elevCode":"A2","buyer":"SPEC","pm":"BATCHINSON","stage":"L","pourSlab":"2026-08-07","dryingHome":"2026-09-16","drywall":"2026-10-05","cabinets":"2026-10-19","finalClean":"2026-11-20"},{"id":"00300236","address":"4860 SW 110th St","comp":"009","dev":"OW","model":"HX3","elevCode":"A2","buyer":"Fernandez Padial, Stephanie","pm":"MBEDAW","stage":"F","pourSlab":"2026-08-14","dryingHome":"2026-09-18","drywall":"2026-10-07","cabinets":"2026-10-21","finalClean":"2026-11-24"},{"id":"00400232","address":"8 Lewisdale Pl","comp":"009","dev":"PC","model":"HX2","elevCode":"A2","buyer":"SPEC","pm":"JFRANTZ","stage":"O","pourSlab":"2026-07-01","dryingHome":"2026-07-22","drywall":"2026-08-12","cabinets":"2026-09-09","finalClean":"2026-10-12"},{"id":"00400234","address":"3 Lansing Ln","comp":"009","dev":"PC","model":"EXX","elevCode":"A2","buyer":"SPEC","pm":"JFRANTZ","stage":"L","pourSlab":"2026-06-30","dryingHome":"2026-08-10","drywall":"2026-09-11","cabinets":"2026-09-25","finalClean":"2026-10-29"},{"id":"00400220","address":"1 Leeds Pl","comp":"007","dev":"PC","model":"EX3","elevCode":"A2","buyer":"MATSEN, KIMBERLEY","pm":"JFRANTZ","stage":"L","pourSlab":"2026-06-26","dryingHome":"2026-07-20","drywall":"2026-08-05","cabinets":"2026-09-01","finalClean":"2026-10-06"},{"id":"00400228","address":"16 Riverdale Ln","comp":"004","dev":"PC","model":"BX2","elevCode":"A2","buyer":"Patsar, Oleksandr","pm":"BATCHINSON","stage":"L","pourSlab":"2026-06-23","dryingHome":"2026-07-22","drywall":"2026-08-24","cabinets":"2026-09-14","finalClean":"2026-10-16"},{"id":"00400223","address":"1 Zanzibar Balsan CT","comp":"004","dev":"PC","model":"HX3","elevCode":"A2","buyer":"SPEC","pm":"BATCHINSON","stage":"L","pourSlab":"2026-06-18","dryingHome":"2026-08-05","drywall":"2026-09-10","cabinets":"2026-09-24","finalClean":"2026-10-28"},{"id":"00100014","address":"3557 NW 45TH AVE","comp":"100","dev":"SR","model":"MO4","elevCode":"FAR","buyer":"Dallas, Daryl","pm":"JBEDAW","stage":"Q","pourSlab":"2026-06-01","dryingHome":"2026-06-23","drywall":"2026-07-27","cabinets":"2026-08-03","finalClean":"2026-08-28"},{"id":"00100015","address":"4510 NW 35TH PLACE RD","comp":"100","dev":"SR","model":"MO4","elevCode":"FAR","buyer":"SPEC","pm":"JBEDAW","stage":"O","pourSlab":"2026-06-01","dryingHome":"2026-06-23","drywall":"2026-07-23","cabinets":"2026-08-13","finalClean":"2026-08-26"},{"id":"00100103","address":"4509 NW 37TH STREET  RD","comp":"100","dev":"SR","model":"MO4","elevCode":"FAR","buyer":"Maggiore, Jacquelyn","pm":"JBEDAW","stage":"Q","pourSlab":"2026-05-14","dryingHome":"2026-06-08","drywall":"2026-06-26","cabinets":"2026-07-08","finalClean":"2026-07-27"},{"id":"00400222","address":"191 Underwood Trl","comp":"002","dev":"PC","model":"EXX","elevCode":"A2","buyer":"SPEC","pm":"BATCHINSON","stage":"O","pourSlab":"2026-06-25","dryingHome":"2026-07-16","drywall":"2026-08-11","cabinets":"2026-09-03","finalClean":"2026-10-08"},{"id":"00100101","address":"4533 NW 37TH STREET RD","comp":"100","dev":"SR","model":"MO4","elevCode":"FAR","buyer":"McCampbell, Larken","pm":"JBEDAW","stage":"Q","pourSlab":"2026-05-04","dryingHome":"2026-05-26","drywall":"2026-06-12","cabinets":"2026-06-17","finalClean":"2026-07-01"},{"id":"00100105","address":"4489 NW 37TH STREET RD","comp":"100","dev":"SR","model":"MO5","elevCode":"TRA","buyer":"Serra Nessi, Migdaly","pm":"JBEDAW","stage":"Q","pourSlab":"2026-06-10","dryingHome":"2026-07-08","drywall":"2026-08-12","cabinets":"2026-08-10","finalClean":"2026-08-26"},{"id":"00100109","address":"4457 NW 37TH STREET RD","comp":"100","dev":"SR","model":"MO4","elevCode":"FAR","buyer":"Rodriguez Olivera, Luis","pm":"JBEDAW","stage":"O","pourSlab":"2026-05-12","dryingHome":"2026-06-04","drywall":"2026-07-01","cabinets":"2026-07-16","finalClean":"2026-08-14"},{"id":"00300221","address":"4516 SW 112th Ln","comp":"009","dev":"OW","model":"EXX","elevCode":"A2","buyer":"Antolick, Samantha Maria","pm":"MBEDAW","stage":"Q","pourSlab":"2026-05-05","dryingHome":"2026-06-01","drywall":"2026-07-09","cabinets":"2026-07-20","finalClean":"2026-09-25"},{"id":"00600477","address":"88 Springwood Dr","comp":"001","dev":"SB","model":"MO4","elevCode":"FAR","buyer":"Williams, Miranda","pm":"JFRANTZ","stage":"O","pourSlab":"2026-05-29","dryingHome":"2026-06-18","drywall":"2026-07-10","cabinets":"2026-08-10","finalClean":"2026-09-08"},{"id":"00600480","address":"82 Springwood Dr","comp":"001","dev":"SB","model":"MO4","elevCode":"TRA","buyer":"SPEC","pm":"JFRANTZ","stage":"O","pourSlab":"2026-06-02","dryingHome":"2026-06-18","drywall":"2026-07-09","cabinets":"2026-08-05","finalClean":"2026-09-02"},{"id":"00600479","address":"84 Springwood Dr","comp":"001","dev":"SB","model":"MO5","elevCode":"FAR","buyer":"SPEC","pm":"JFRANTZ","stage":"O","pourSlab":"2026-05-27","dryingHome":"2026-06-19","drywall":"2026-07-16","cabinets":"2026-08-18","finalClean":"2026-09-04"},{"id":"00600476","address":"90 Springwood Dr","comp":"001","dev":"SB","model":"MO5","elevCode":"TRA","buyer":"SPEC","pm":"JFRANTZ","stage":"O","pourSlab":"2026-06-01","dryingHome":"2026-06-25","drywall":"2026-07-15","cabinets":"2026-08-13","finalClean":"2026-09-14"},{"id":"00600478","address":"86 Springwood Dr","comp":"001","dev":"SB","model":"MO3","elevCode":"FAR","buyer":"SPEC","pm":"JFRANTZ","stage":"O","pourSlab":"2026-06-02","dryingHome":"2026-06-18","drywall":"2026-07-16","cabinets":"2026-08-12","finalClean":"2026-09-11"},{"id":"00400216","address":"67 President Ln","comp":"009","dev":"PC","model":"HX2","elevCode":"A2","buyer":"SPEC","pm":"BATCHINSON","stage":"O","pourSlab":"2026-06-15","dryingHome":"2026-07-06","drywall":"2026-07-28","cabinets":"2026-08-27","finalClean":"2026-10-01"},{"id":"00300214","address":"11270 SW 62nd Cir","comp":"009","dev":"OW","model":"EXX","elevCode":"A2","buyer":"SPEC","pm":"MBEDAW","stage":"Q","pourSlab":"2026-04-16","dryingHome":"2026-05-08","drywall":"2026-06-12","cabinets":"2026-07-16","finalClean":"2026-08-27"},{"id":"00400218","address":"7 Service Berry Pl","comp":"005","dev":"PC","model":"EXX","elevCode":"A2","buyer":"SPEC","pm":"BATCHINSON","stage":"O","pourSlab":"2026-05-20","dryingHome":"2026-06-05","drywall":"2026-07-06","cabinets":"2026-08-17","finalClean":"2026-09-30"},{"id":"00400217","address":"5 Service Berry Pl","comp":"005","dev":"PC","model":"EXX","elevCode":"A2","buyer":"SPEC","pm":"BATCHINSON","stage":"O","pourSlab":"2026-05-19","dryingHome":"2026-06-05","drywall":"2026-07-06","cabinets":"2026-08-24","finalClean":"2026-09-30"},{"id":"00400178","address":"8 Rolling Sands Dr","comp":"009","dev":"PC","model":"HX3","elevCode":"A2","buyer":"SPEC","pm":"BATCHINSON","stage":"O","pourSlab":"2026-06-08","dryingHome":"2026-07-06","drywall":"2026-07-21","cabinets":"2026-08-12","finalClean":"2026-10-02"},{"id":"00400215","address":"32 Sea Front Trail","comp":"009","dev":"PC","model":"BX2","elevCode":"A2","buyer":"CARON, LINDA","pm":"BATCHINSON","stage":"O","pourSlab":"2026-05-20","dryingHome":"2026-06-19","drywall":"2026-07-10","cabinets":"2026-08-03","finalClean":"2026-09-14"},{"id":"00400213","address":"30 UNDERWICK PATH","comp":"009","dev":"PC","model":"HX3","elevCode":"A2","buyer":"SPEC","pm":"BATCHINSON","stage":"L","pourSlab":"2026-06-23","dryingHome":"2026-07-24","drywall":"2026-09-01","cabinets":"2026-09-16","finalClean":"2026-10-20"},{"id":"00400219","address":"8 Renfro Ln","comp":"007","dev":"PC","model":"HX3","elevCode":"A2","buyer":"SPEC","pm":"BATCHINSON","stage":"O","pourSlab":"2026-05-14","dryingHome":"2026-06-03","drywall":"2026-07-09","cabinets":"2026-08-05","finalClean":"2026-10-05"},{"id":"00400208","address":"7 UPLAND PL","comp":"002","dev":"PC","model":"HX2","elevCode":"A2","buyer":"SPEC","pm":"BATCHINSON","stage":"O","pourSlab":"2026-05-22","dryingHome":"2026-06-15","drywall":"2026-07-07","cabinets":"2026-08-05","finalClean":"2026-09-25"},{"id":"00200212","address":"4919 SW 129th Pl","comp":"001","dev":"MO","model":"BX2","elevCode":"A2","buyer":"MODEL","pm":"MBEDAW","stage":"Q","pourSlab":"2026-03-20","dryingHome":"2026-04-22","drywall":"2026-05-30","cabinets":"2026-06-10","finalClean":"2026-06-25"},{"id":"00400209","address":"117 BAYSIDE DR","comp":"006","dev":"PC","model":"EXX","elevCode":"A2","buyer":"SPEC","pm":"JFRANTZ","stage":"O","pourSlab":"2026-04-27","dryingHome":"2026-05-21","drywall":"2026-06-15","cabinets":"2026-07-20","finalClean":"2026-08-17"},{"id":"00400207","address":"20 RYKEN LN","comp":"002","dev":"PC","model":"EXX","elevCode":"A2","buyer":"Morales, Victor","pm":"BATCHINSON","stage":"O","pourSlab":"2026-04-16","dryingHome":"2026-05-18","drywall":"2026-06-16","cabinets":"2026-07-08","finalClean":"2026-08-21"},{"id":"00100013","address":"3563 NW 45TH AVE","comp":"100","dev":"SR","model":"MO4","elevCode":"FAR","buyer":"SPEC","pm":"JBEDAW","stage":"Q","pourSlab":"2026-03-25","dryingHome":"2026-04-27","drywall":"2026-05-18","cabinets":"2026-05-30","finalClean":"2026-07-02"},{"id":"00400210","address":"105 SELMA TRL","comp":"009","dev":"PC","model":"HX2","elevCode":"A2","buyer":"SPEC","pm":"BATCHINSON","stage":"O","pourSlab":"2026-04-03","dryingHome":"2026-04-15","drywall":"2026-05-14","cabinets":"2026-06-04","finalClean":"2026-07-21"},{"id":"00300203","address":"5792 SW 117th Lane Rd","comp":"002","dev":"OW","model":"EXX","elevCode":"A2","buyer":"SPEC","pm":"MBEDAW","stage":"O","pourSlab":"2026-03-13","dryingHome":"2026-05-01","drywall":"2026-06-11","cabinets":"2026-07-06","finalClean":"2026-08-27"},{"id":"00200204","address":"320 Marion Oaks Course","comp":"001","dev":"MO","model":"BX2","elevCode":"A2","buyer":"SPEC","pm":"MBEDAW","stage":"O","pourSlab":"2026-03-10","dryingHome":"2026-04-30","drywall":"2026-06-04","cabinets":"2026-06-15","finalClean":"2026-07-23"},{"id":"00200195","address":"2910 SW 165 Street Rd","comp":"004","dev":"MO","model":"AND","elevCode":"A2","buyer":"SPEC","pm":"MBEDAW","stage":"O","pourSlab":"2026-03-06","dryingHome":"2026-04-20","drywall":"2026-06-08","cabinets":"2026-06-22","finalClean":"2026-08-06"},{"id":"00600012","address":"10 Summerwood Rd S","comp":"001","dev":"SB","model":"MO4","elevCode":"FAR","buyer":"MODEL","pm":"JFRANTZ","stage":"Q","pourSlab":"2026-04-22","dryingHome":"2026-05-14","drywall":"2026-05-27","cabinets":"2026-06-08","finalClean":"2026-06-26"},{"id":"00400205","address":"21 Postman Ln","comp":"005","dev":"PC","model":"HX3","elevCode":"A2","buyer":"SPEC","pm":"BATCHINSON","stage":"O","pourSlab":"2026-03-04","dryingHome":"2026-03-19","drywall":"2026-04-20","cabinets":"2026-05-05","finalClean":"2026-06-29"},{"id":"00200186","address":"17543 SW 18th Avenue Rd","comp":"001","dev":"MO","model":"HX2","elevCode":"A2","buyer":"Orta, Brian","pm":"JBEDAW","stage":"O","pourSlab":"2026-03-05","dryingHome":"2026-04-16","drywall":"2026-05-18","cabinets":"2026-05-29","finalClean":"2026-08-10"},{"id":"00200193","address":"16871 SW 25th Ct","comp":"002","dev":"MO","model":"BX2","elevCode":"A2","buyer":"Nolasco, Amarilis","pm":"MBEDAW","stage":"Q","pourSlab":"2026-03-06","dryingHome":"2026-05-01","drywall":"2026-05-30","cabinets":"2026-06-16","finalClean":"2026-07-27"},{"id":"00200196","address":"8903 SW 135th St","comp":"004","dev":"MO","model":"BX2","elevCode":"A2","buyer":"SPEC","pm":"JBEDAW","stage":"O","pourSlab":"2026-03-10","dryingHome":"2026-04-09","drywall":"2026-05-06","cabinets":"2026-05-26","finalClean":"2026-08-18"},{"id":"00200188","address":"2624 SW 175th Loop","comp":"001","dev":"MO","model":"AND","elevCode":"A2","buyer":"Montero Rodriguez, Juan Esteba","pm":"MBEDAW","stage":"Q","pourSlab":"2026-03-06","dryingHome":"2026-04-20","drywall":"2026-06-02","cabinets":"2026-06-12","finalClean":"2026-07-31"},{"id":"00200185","address":"15168 SW 51st Ave","comp":"001","dev":"MO","model":"HX2","elevCode":"A2","buyer":"Ayala, Ramon","pm":"MBEDAW","stage":"Q","pourSlab":"2026-03-27","dryingHome":"2026-05-04","drywall":"2026-06-12","cabinets":"2026-06-24","finalClean":"2026-07-27"},{"id":"00200194","address":"17414 SW 17th Cir","comp":"002","dev":"MO","model":"HX2","elevCode":"A2","buyer":"Muniz Perez, Marcial","pm":"JBEDAW","stage":"O","pourSlab":"2026-02-27","dryingHome":"2026-04-20","drywall":"2026-05-12","cabinets":"2026-05-26","finalClean":"2026-07-09"},{"id":"00200192","address":"16781 SW 20th Court Rd","comp":"007","dev":"MO","model":"BX2","elevCode":"A2","buyer":"SPEC","pm":"MBEDAW","stage":"O","pourSlab":"2026-03-04","dryingHome":"2026-04-14","drywall":"2026-05-28","cabinets":"2026-06-12","finalClean":"2026-07-24"},{"id":"00200198","address":"8759 SW 138th St","comp":"001","dev":"MO","model":"HX2","elevCode":"A2","buyer":"Davis, Stintson","pm":"JBEDAW","stage":"O","pourSlab":"2026-03-03","dryingHome":"2026-04-16","drywall":"2026-05-11","cabinets":"2026-06-10","finalClean":"2026-08-25"},{"id":"00200197","address":"3859 SW 169th Lane Rd","comp":"001","dev":"MO","model":"BX2","elevCode":"A2","buyer":"SPEC","pm":"MBEDAW","stage":"O","pourSlab":"2026-03-05","dryingHome":"2026-05-07","drywall":"2026-06-18","cabinets":"2026-07-17","finalClean":"2026-08-20"},{"id":"00200184","address":"2441 SW 177th Place Rd","comp":"001","dev":"MO","model":"BX2","elevCode":"A2","buyer":"Kramer, William Kevin","pm":"JBEDAW","stage":"O","pourSlab":"2026-03-09","dryingHome":"2026-04-03","drywall":"2026-04-28","cabinets":"2026-05-13","finalClean":"2026-06-12"},{"id":"00200189","address":"630 Marion Oaks Blvd","comp":"001","dev":"MO","model":"BX2","elevCode":"A2","buyer":"SPEC","pm":"JBEDAW","stage":"O","pourSlab":"2026-02-12","dryingHome":"2026-03-13","drywall":"2026-04-20","cabinets":"2026-05-12","finalClean":"2026-07-20"},{"id":"00400206","address":"38 Radford Ln,","comp":"005","dev":"PC","model":"EXX","elevCode":"A2","buyer":"Sanchez, Felipe","pm":"BATCHINSON","stage":"O","pourSlab":"2026-03-03","dryingHome":"2026-03-19","drywall":"2026-04-20","cabinets":"2026-05-05","finalClean":"2026-06-25"},{"id":"00200191","address":"2421 SW 177th Place Rd","comp":"007","dev":"MO","model":"HX2","elevCode":"A2","buyer":"Gomez Molina, Mario A.","pm":"JBEDAW","stage":"O","pourSlab":"2026-02-18","dryingHome":"2026-03-13","drywall":"2026-04-29","cabinets":"2026-05-04","finalClean":"2026-06-11"},{"id":"00200187","address":"17699 SW 17th Cir","comp":"001","dev":"MO","model":"HX2","elevCode":"A2","buyer":"Lazo Juarez, Stephanie","pm":"JBEDAW","stage":"O","pourSlab":"2026-03-02","dryingHome":"2026-04-20","drywall":"2026-05-12","cabinets":"2026-05-29","finalClean":"2026-08-04"},{"id":"00200190","address":"2499 SW 167th Loop","comp":"007","dev":"MO","model":"AND","elevCode":"A2","buyer":"SPEC","pm":"JBEDAW","stage":"O","pourSlab":"2026-03-04","dryingHome":"2026-04-27","drywall":"2026-05-18","cabinets":"2026-07-20","finalClean":"2026-08-24"},{"id":"00300202","address":"5005 SW 107th Loop","comp":"002","dev":"OW","model":"HX3","elevCode":"A2","buyer":"Jones, Jeffrey","pm":"MBEDAW","stage":"O","pourSlab":"2026-03-17","dryingHome":"2026-05-18","drywall":"2026-06-10","cabinets":"2026-06-18","finalClean":"2026-07-16"},{"id":"00300181","address":"4309 SW 114th St","comp":"001","dev":"OW","model":"HX3","elevCode":"A2","buyer":"Bell Colon, Edwin","pm":"MBEDAW","stage":"O","pourSlab":"2026-03-17","dryingHome":"2026-04-24","drywall":"2026-05-29","cabinets":"2026-06-11","finalClean":"2026-06-29"},{"id":"00300180","address":"4304 SW 113th PL","comp":"001","dev":"OW","model":"HX2","elevCode":"A2","buyer":"Macleod, Linda","pm":"MBEDAW","stage":"O","pourSlab":"2026-02-17","dryingHome":"2026-03-04","drywall":"2026-03-31","cabinets":"2026-04-17","finalClean":"2026-05-20"},{"id":"00400199","address":"169 Pine Grove Dr","comp":"001","dev":"PC","model":"MO3","elevCode":"TRA","buyer":"SPEC","pm":"BATCHINSON","stage":"O","pourSlab":"2026-02-09","dryingHome":"2026-03-03","drywall":"2026-04-01","cabinets":"2026-05-12","finalClean":"2026-06-24"},{"id":"00100102","address":"4521 NW 37TH STREET  RD","comp":"100","dev":"SR","model":"MO3","elevCode":"FAR","buyer":"Viteri, Julio R.","pm":"JBEDAW","stage":"O","pourSlab":"2026-01-21","dryingHome":"2026-01-28","drywall":"2026-02-09","cabinets":"2026-02-27","finalClean":"2026-04-01"},{"id":"00100104","address":"4497 NW 37TH STREET  RD","comp":"100","dev":"SR","model":"MO4","elevCode":"FAR","buyer":"Tate, Sherri","pm":"JBEDAW","stage":"Q","pourSlab":"2026-01-14","dryingHome":"2026-02-04","drywall":"2026-02-25","cabinets":"2026-03-18","finalClean":"2026-04-16"},{"id":"00400182","address":"11 Luther Dr","comp":"006","dev":"PC","model":"HX3","elevCode":"A2","buyer":"Santos, Mario","pm":"JFRANTZ","stage":"Q","pourSlab":"2026-02-09","dryingHome":"2026-03-17","drywall":"2026-03-31","cabinets":"2026-04-20","finalClean":"2026-06-05"},{"id":"00300200","address":"4390 SW 96th PL","comp":"001","dev":"OW","model":"HX3","elevCode":"A2","buyer":"Fernandez, Stephanie","pm":"MBEDAW","stage":"O","pourSlab":"2026-02-17","dryingHome":"2026-03-05","drywall":"2026-04-08","cabinets":"2026-04-10","finalClean":"2026-05-19"},{"id":"00400177","address":"8 Ricker Pl","comp":"001","dev":"PC","model":"HX2","elevCode":"A2","buyer":"Dominguez, Alberto","pm":"BATCHINSON","stage":"O","pourSlab":"2026-02-03","dryingHome":"2026-03-06","drywall":"2026-03-31","cabinets":"2026-04-20","finalClean":"2026-06-19"},{"id":"00400176","address":"18 Sea Breeze Trl","comp":"001","dev":"PC","model":"BX2","elevCode":"A2","buyer":"Laws, Colleen","pm":"BATCHINSON","stage":"Q","pourSlab":"2026-02-05","dryingHome":"2026-02-23","drywall":"2026-03-30","cabinets":"2026-04-20","finalClean":"2026-06-10"},{"id":"00100107","address":"4473 NW 37TH STREET  RD","comp":"100","dev":"SR","model":"MO4","elevCode":"TRA","buyer":"Anderson, Keith","pm":"JBEDAW","stage":"O","pourSlab":"2026-01-20","dryingHome":"2026-01-23","drywall":"2026-02-09","cabinets":"2026-02-19","finalClean":"2026-04-01"},{"id":"00100108","address":"4465 NW 37TH STREET  RD","comp":"100","dev":"SR","model":"MO5","elevCode":"TRA","buyer":"SPEC","pm":"JBEDAW","stage":"O","pourSlab":"2026-01-27","dryingHome":"2026-02-20","drywall":"2026-03-06","cabinets":"2026-04-02","finalClean":"2026-05-01"},{"id":"00100006","address":"4474 NW 37TH STREET  RD","comp":"100","dev":"SR","model":"MO1","elevCode":"FAR","buyer":"Rodriguez, Maria","pm":"JBEDAW","stage":"Q","pourSlab":"2026-01-27","dryingHome":"2026-02-23","drywall":"2026-03-02","cabinets":"2026-03-23","finalClean":"2026-05-01"},{"id":"00200165","address":"8719 SW 139th Place Rd","comp":"002","dev":"MO","model":"BX2","elevCode":"A2","buyer":"Rosado, Jose L.","pm":"JBEDAW","stage":"Q","pourSlab":"2026-01-23","dryingHome":"2026-02-27","drywall":"2026-04-14","cabinets":"2026-05-07","finalClean":"2026-08-24"},{"id":"00300168","address":"3851 SW 112th St","comp":"003","dev":"OW","model":"HX2","elevCode":"A2","buyer":"Torres Rosado, Wilbert","pm":"MBEDAW","stage":"O","pourSlab":"2026-01-14","dryingHome":"2026-01-29","drywall":"2026-03-04","cabinets":"2026-03-20","finalClean":"2026-05-11"},{"id":"00200173","address":"5191 SW 159th St","comp":"007","dev":"MO","model":"HX2","elevCode":"A2","buyer":"Acevedo Santos, Jose Juan","pm":"JBEDAW","stage":"O","pourSlab":"2026-02-20","dryingHome":"2026-04-02","drywall":"2026-04-28","cabinets":"2026-05-18","finalClean":"2026-07-20"},{"id":"00200172","address":"5154 SW 159th St","comp":"007","dev":"MO","model":"BX2","elevCode":"A2","buyer":"SPEC","pm":"JBEDAW","stage":"O","pourSlab":"2026-01-23","dryingHome":"2026-02-13","drywall":"2026-03-20","cabinets":"2026-03-27","finalClean":"2026-05-27"},{"id":"00400183","address":"3 Longview Ln","comp":"001","dev":"PC","model":"HX3","elevCode":"A2","buyer":"STAFFA, ANNA","pm":"JFRANTZ","stage":"Q","pourSlab":"2026-02-04","dryingHome":"2026-02-27","drywall":"2026-03-31","cabinets":"2026-04-20","finalClean":"2026-06-08"},{"id":"00400170","address":"44 PINE CIRCLE DR","comp":"004","dev":"PC","model":"HX2","elevCode":"A2","buyer":"Dolhov, Oleksandr","pm":"BATCHINSON","stage":"Q","pourSlab":"2026-01-29","dryingHome":"2026-02-17","drywall":"2026-03-18","cabinets":"2026-04-08","finalClean":"2026-05-14"},{"id":"00400174","address":"91 Kashmir Trl","comp":"001","dev":"PC","model":"HX3","elevCode":"A2","buyer":"Mitchell, Matthew","pm":"BATCHINSON","stage":"O","pourSlab":"2026-02-05","dryingHome":"2026-02-25","drywall":"2026-04-22","cabinets":"2026-05-21","finalClean":"2026-06-18"},{"id":"00200110","address":"7030 SW 128th St","comp":"009","dev":"MO","model":"IBI","elevCode":"A2","buyer":"Soriano, Marcus","pm":"JBEDAW","stage":"O","pourSlab":"2025-11-10","dryingHome":"2025-12-05","drywall":"2026-01-26","cabinets":"2026-02-12","finalClean":"2026-04-13"},{"id":"00200131","address":"6859 SW 128th Pl","comp":"009","dev":"MO","model":"SNP","elevCode":"A2","buyer":"Pena, Manuel Elias","pm":"JBEDAW","stage":"O","pourSlab":"2025-04-28","dryingHome":"2025-10-10","drywall":"2025-11-21","cabinets":"2025-12-15","finalClean":"2026-02-10"},{"id":"00400175","address":"11 Potters Ln","comp":"001","dev":"PC","model":"BX2","elevCode":"A2","buyer":"Santos, Naomi","pm":"BATCHINSON","stage":"Q","pourSlab":"2025-12-12","dryingHome":"2026-01-14","drywall":"2026-03-06","cabinets":"2026-04-08","finalClean":"2026-06-02"},{"id":"00400169","address":"29 LOUISIANA DR","comp":"004","dev":"PC","model":"EXX","elevCode":"A2","buyer":"Lino, Brian","pm":"BATCHINSON","stage":"Q","pourSlab":"2025-11-14","dryingHome":"2025-11-28","drywall":"2026-01-27","cabinets":"2026-02-06","finalClean":"2026-04-22"},{"id":"00400117","address":"259 Ullian Trl","comp":"009","dev":"PC","model":"BIM","elevCode":"A4","buyer":"Tran, Tim","pm":"DGRIESEMER","stage":"Q","pourSlab":"2025-06-27","dryingHome":"2025-07-17","drywall":"2025-08-05","cabinets":"2025-09-05","finalClean":"2025-11-14"},{"id":"00200112","address":"7034  SW 128th Place Rd","comp":"001","dev":"MO","model":"HER","elevCode":"A2","buyer":"Gomez, Maycol Cristofer","pm":"JBEDAW","stage":"O","pourSlab":"2025-11-05","dryingHome":"2025-11-07","drywall":"2026-01-14","cabinets":"2026-02-03","finalClean":"2026-03-26"},{"id":"00300167","address":"3862 SW 111th Pl","comp":"003","dev":"OW","model":"EXX","elevCode":"A2","buyer":"Mosburg, Remington","pm":"MBEDAW","stage":"O","pourSlab":"2026-02-10","dryingHome":"2026-02-20","drywall":"2026-03-02","cabinets":"2026-03-13","finalClean":"2026-07-06"},{"id":"00300166","address":"4347 SW 112th Ln","comp":"003","dev":"OW","model":"HX3","elevCode":"A2","buyer":"Toboada, Madeline","pm":"JGWINN","stage":"O","pourSlab":"2025-10-27","dryingHome":"2025-12-05","drywall":"2025-12-29","cabinets":"2026-01-20","finalClean":"2026-03-20"},{"id":"00300164","address":"5550 SW 107th St","comp":"007","dev":"OW","model":"HX2","elevCode":"A2","buyer":"Moreno Perez, Rodrigo","pm":"MBEDAW","stage":"O","pourSlab":"2025-12-05","dryingHome":"2025-12-30","drywall":"2026-01-20","cabinets":"2026-02-06","finalClean":"2026-04-02"},{"id":"00300151","address":"9632 SW 40TH  CT","comp":"002","dev":"OW","model":"EXX","elevCode":"A2","buyer":"ORTIZ RODRIGUEZ, NANCY","pm":"JGWINN","stage":"O","pourSlab":"2025-12-12","dryingHome":"2026-01-08","drywall":"2026-02-04","cabinets":"2026-03-02","finalClean":"2026-03-23"},{"id":"00300160","address":"10095 SW 44th Ter","comp":"007","dev":"OW","model":"BX2","elevCode":"A2","buyer":"Vega, Maria","pm":"MBEDAW","stage":"O","pourSlab":"2025-12-29","dryingHome":"2026-01-15","drywall":"2026-02-04","cabinets":"2026-02-18","finalClean":"2026-05-18"},{"id":"00200126","address":"6760 SW 129th Loop","comp":"009","dev":"MO","model":"HX2","elevCode":"A2","buyer":"Marrero, Alexander","pm":"JBEDAW","stage":"O","pourSlab":"2025-05-23","dryingHome":"2025-06-12","drywall":"2025-07-01","cabinets":"2025-07-16","finalClean":"2025-10-17"},{"id":"00100115","address":"4532 NW 37TH STREET RD","comp":"100","dev":"SR","model":"MO1","elevCode":"FAR","buyer":"Hester, Gerald","pm":"JGWINN","stage":"O","pourSlab":"2025-08-15","dryingHome":"2025-09-16","drywall":"2025-10-16","cabinets":"2025-11-20","finalClean":"2025-12-19"},{"id":"00300159","address":"5900 SW 112th Place Rd","comp":"002","dev":"OW","model":"BX2","elevCode":"A2","buyer":"Filgueiras, Jaylu V.","pm":"JGWINN","stage":"O","pourSlab":"2025-10-02","dryingHome":"2025-10-22","drywall":"2025-11-20","cabinets":"2025-12-09","finalClean":"2026-02-13"},{"id":"00500154","address":"17859 SW 68th Place","comp":"003","dev":"JF","model":"MO3","elevCode":"FAR","buyer":"Battle, Race","pm":"JBEDAW","stage":"O","pourSlab":"2025-09-02","dryingHome":"2025-09-19","drywall":"2025-10-20","cabinets":"2025-11-10","finalClean":"2025-12-15"},{"id":"00300150","address":"4336 SW 112TH  ST","comp":"002","dev":"OW","model":"EXX","elevCode":"A2","buyer":"Tarano, Lainie","pm":"JGWINN","stage":"O","pourSlab":"2025-08-20","dryingHome":"2025-09-11","drywall":"2025-10-03","cabinets":"2025-10-27","finalClean":"2025-12-23"},{"id":"00500156","address":"17875 SW 68th Place","comp":"007","dev":"JF","model":"MO3","elevCode":"FAR","buyer":"SPEC","pm":"JBEDAW","stage":"O","pourSlab":"2025-09-04","dryingHome":"2025-09-26","drywall":"2025-10-28","cabinets":"2025-11-24","finalClean":"2025-12-15"},{"id":"00400146","address":"8484 SW 138th Pl","comp":"004","dev":"MO","model":"AND","elevCode":"A2","buyer":"Reyes-Arenas,  Olga Margarita","pm":"JBEDAW","stage":"O","pourSlab":"2025-08-01","dryingHome":"2025-08-22","drywall":"2025-10-02","cabinets":"2025-11-07","finalClean":"2026-01-27"},{"id":"00400145","address":"697 Marion Oaks Lane","comp":"007","dev":"MO","model":"HX2","elevCode":"A2","buyer":"Pagan Lopez, Joselyn","pm":"JBEDAW","stage":"O","pourSlab":"2025-08-01","dryingHome":"2025-08-26","drywall":"2025-10-09","cabinets":"2025-11-21","finalClean":"2026-02-03"},{"id":"00400119","address":"104 Birchwood Dr","comp":"009","dev":"PC","model":"AND","elevCode":"A2","buyer":"BUREN, MARILYN","pm":"DGRIESEMER","stage":"O","pourSlab":"2025-04-25","dryingHome":"2025-05-14","drywall":"2025-06-03","cabinets":"2025-06-17","finalClean":"2025-11-25"},{"id":"00400143","address":"4258 SW 96th Pl","comp":"007","dev":"OW","model":"HX2","elevCode":"A2","buyer":"CASH, LLC, NAF","pm":"JGWINN","stage":"O","pourSlab":"2025-06-27","dryingHome":"2025-07-17","drywall":"2025-08-05","cabinets":"2025-08-19","finalClean":"2025-10-16"},{"id":"00400144","address":"4105 SW 130th  Pl","comp":"007","dev":"MO","model":"BX2","elevCode":"A2","buyer":"Putnam, Roldan","pm":"JBEDAW","stage":"O","pourSlab":"2025-07-11","dryingHome":"2025-07-30","drywall":"2025-08-18","cabinets":"2025-09-02","finalClean":"2025-11-07"},{"id":"00400147","address":"1 Smokehouse Pl.","comp":"004","dev":"PC","model":"HX2","elevCode":"A2","buyer":"O'Connell, PHILLIP","pm":"BATCHINSON","stage":"Q","pourSlab":"2025-08-18","dryingHome":"2025-09-05","drywall":"2025-10-07","cabinets":"2025-10-21","finalClean":"2025-12-18"},{"id":"00400157","address":"27 Sea Breeze Trl","comp":"003","dev":"PC","model":"HX3","elevCode":"A2","buyer":"Grant, Anna","pm":"BATCHINSON","stage":"O","pourSlab":"2025-09-08","dryingHome":"2025-09-25","drywall":"2025-10-23","cabinets":"2025-11-30","finalClean":"2025-12-29"},{"id":"00400139","address":"43 Whittingham Lane","comp":"001","dev":"PC","model":"BX2","elevCode":"A2","buyer":"ROSA, CARMEN","pm":"BATCHINSON","stage":"Q","pourSlab":"2025-05-29","dryingHome":"2025-06-17","drywall":"2025-08-18","cabinets":"2025-09-08","finalClean":"2025-11-13"},{"id":"00400136","address":"10 Frankford Ct.","comp":"001","dev":"PC","model":"HX2","elevCode":"A2","buyer":"BALZARINI, JOHN","pm":"BATCHINSON","stage":"O","pourSlab":"2025-07-25","dryingHome":"2025-08-20","drywall":"2025-09-15","cabinets":"2025-10-07","finalClean":"2025-12-01"},{"id":"00400137","address":"140 Belleaire Dr.","comp":"001","dev":"PC","model":"HX2","elevCode":"A2","buyer":"ROCYNA, JEANNETTE","pm":"BATCHINSON","stage":"O","pourSlab":"2025-07-30","dryingHome":"2025-08-18","drywall":"2025-09-22","cabinets":"2025-10-07","finalClean":"2026-01-08"},{"id":"00400138","address":"27 Palmer Lane","comp":"001","dev":"PC","model":"HX2","elevCode":"A2","buyer":"Siekman, Conner","pm":"JHUMPHREYS","stage":"O","pourSlab":"2025-05-21","dryingHome":"2025-07-18","drywall":"2025-09-11","cabinets":"2025-09-18","finalClean":"2026-01-02"},{"id":"00400162","address":"4 Serra Ct.","comp":"006","dev":"PC","model":"HX2","elevCode":"A2","buyer":"DEFEO, JR, LOUIS","pm":"BATCHINSON","stage":"Q","pourSlab":"2025-10-09","dryingHome":"2025-10-28","drywall":"2025-12-01","cabinets":"2025-12-15","finalClean":"2026-02-27"},{"id":"00400142","address":"34 Ryley Lane","comp":"006","dev":"PC","model":"HX2","elevCode":"A2","buyer":"Dominguez, Brian","pm":"BATCHINSON","stage":"O","pourSlab":"2025-08-04","dryingHome":"2025-08-21","drywall":"2025-09-26","cabinets":"2025-10-06","finalClean":"2025-12-02"},{"id":"00400141","address":"1 Barbera Lane","comp":"006","dev":"PC","model":"HX3","elevCode":"A2","buyer":"NEWHALL, TODD","pm":"BATCHINSON","stage":"O","pourSlab":"2025-09-11","dryingHome":"2025-10-03","drywall":"2025-10-23","cabinets":"2025-11-07","finalClean":"2025-12-11"},{"id":"00400140","address":"41 Whittingham Lane","comp":"006","dev":"PC","model":"AND","elevCode":"A2","buyer":"TARAFA ALFARO, SAHYLI","pm":"BATCHINSON","stage":"Q","pourSlab":"2025-06-10","dryingHome":"2025-07-30","drywall":"2025-08-25","cabinets":"2025-09-11","finalClean":"2025-11-14"},{"id":"00400134","address":"5 Edmond Pl.","comp":"001","dev":"PC","model":"EXX","elevCode":"A2","buyer":"Schaner, Larry","pm":"BATCHINSON","stage":"O","pourSlab":"2025-09-25","dryingHome":"2025-10-17","drywall":"2025-11-21","cabinets":"2025-12-04","finalClean":"2026-01-30"},{"id":"00400163","address":"9 Sedan PL.","comp":"003","dev":"PC","model":"HX3","elevCode":"A2","buyer":"Baron, Raymond","pm":"BATCHINSON","stage":"O","pourSlab":"2025-10-09","dryingHome":"2025-10-28","drywall":"2025-12-17","cabinets":"2025-12-31","finalClean":"2026-03-27"},{"id":"00500155","address":"17867 SW 68th Place","comp":"003","dev":"JF","model":"MO4","elevCode":"FAR","buyer":"Neumann, Brady","pm":"JBEDAW","stage":"O","pourSlab":"2025-09-02","dryingHome":"2025-09-29","drywall":"2025-10-28","cabinets":"2025-11-20","finalClean":"2025-12-15"},{"id":"00100114","address":"4520 NW 37TH STREET RD","comp":"100","dev":"SR","model":"MO2","elevCode":"FAR","buyer":"Davila Jr., Victor","pm":"JGWINN","stage":"O","pourSlab":"2025-08-15","dryingHome":"2025-09-12","drywall":"2025-10-10","cabinets":"2025-11-04","finalClean":"2025-12-23"},{"id":"00100112","address":"4433 NW 37TH STREET  RD","comp":"100","dev":"SR","model":"MO3","elevCode":"FAR","buyer":"Escobar Alvare, Juan Jose","pm":"JGWINN","stage":"Q","pourSlab":"2025-08-13","dryingHome":"2025-09-09","drywall":"2025-10-17","cabinets":"2025-11-04","finalClean":"2025-12-23"},{"id":"00100110","address":"4449 NW 37TH STREET  RD","comp":"100","dev":"SR","model":"MO4","elevCode":"TRA","buyer":"King, Bryan Scott","pm":"JGWINN","stage":"O","pourSlab":"2025-10-15","dryingHome":"2025-11-03","drywall":"2025-11-20","cabinets":"2025-12-10","finalClean":"2026-01-05"},{"id":"00100007","address":"4480 NW 37TH STREET  RD","comp":"100","dev":"SR","model":"MO2","elevCode":"FAR","buyer":"SPEC","pm":"JGWINN","stage":"O","pourSlab":"2025-08-13","dryingHome":"2025-09-17","drywall":"2025-10-15","cabinets":"2025-11-03","finalClean":"2025-12-18"},{"id":"00100111","address":"4441 NW 37TH STREET  RD","comp":"100","dev":"SR","model":"MO5","elevCode":"TRA","buyer":"SPEC","pm":"JGWINN","stage":"O","pourSlab":"2025-08-13","dryingHome":"2025-10-02","drywall":"2025-10-31","cabinets":"2025-11-26","finalClean":"2026-01-07"},{"id":"00100113","address":"4510 NW 37TH STREET RD","comp":"100","dev":"SR","model":"MO3","elevCode":"TRA","buyer":"Pietras, Jenna","pm":"JGWINN","stage":"O","pourSlab":"2025-08-13","dryingHome":"2025-09-15","drywall":"2025-10-10","cabinets":"2025-11-14","finalClean":"2025-12-23"},{"id":"00400158","address":"23 Prince Kaarel Ln","comp":"002","dev":"PC","model":"HX2","elevCode":"A2","buyer":"Roslaniec, Mike","pm":"BATCHINSON","stage":"O","pourSlab":"2025-09-10","dryingHome":"2025-10-01","drywall":"2025-11-19","cabinets":"2025-11-25","finalClean":"2026-02-09"},{"id":"00400149","address":"12 Seville Orange Path","comp":"002","dev":"PC","model":"HX3","elevCode":"A2","buyer":"Kling, Brian","pm":"BATCHINSON","stage":"Q","pourSlab":"2025-08-25","dryingHome":"2025-09-18","drywall":"2025-10-23","cabinets":"2025-10-30","finalClean":"2025-12-19"},{"id":"00400148","address":"9 Undermount Path W.","comp":"002","dev":"PC","model":"EXX","elevCode":"A2","buyer":"DAVIS, KERI","pm":"BATCHINSON","stage":"O","pourSlab":"2025-08-06","dryingHome":"2025-09-10","drywall":"2025-10-24","cabinets":"2025-11-07","finalClean":"2025-12-11"},{"id":"00100008","address":"4488 NW 37TH STREET  RD","comp":"100","dev":"SR","model":"MO5","elevCode":"FAR","buyer":"Hayes, Dorothy","pm":"JGWINN","stage":"O","pourSlab":"2025-08-08","dryingHome":"2025-08-29","drywall":"2025-10-10","cabinets":"2025-10-30","finalClean":"2025-12-19"},{"id":"00400135","address":"17 Renn Ln.","comp":"001","dev":"PC","model":"AND","elevCode":"A2","buyer":"Jones, Willie","pm":"BATCHINSON","stage":"O","pourSlab":"2025-06-09","dryingHome":"2025-07-24","drywall":"2025-08-12","cabinets":"2025-09-16","finalClean":"2025-12-29"},{"id":"00100005","address":"4466 NW 37TH STREET  RD","comp":"100","dev":"SR","model":"MO1","elevCode":"TRA","buyer":"LLC, Bayone","pm":"JGWINN","stage":"O","pourSlab":"2025-07-29","dryingHome":"2025-08-15","drywall":"2025-09-18","cabinets":"2025-10-10","finalClean":"2025-11-12"},{"id":"00100004","address":"4458 NW 37TH STREET RD","comp":"100","dev":"SR","model":"MO4","elevCode":"FAR","buyer":"Ortega, Ruben","pm":"JGWINN","stage":"O","pourSlab":"2025-08-13","dryingHome":"2025-08-27","drywall":"2025-09-18","cabinets":"2025-10-09","finalClean":"2025-11-12"},{"id":"00500152","address":"17843 SW 68th Place","comp":"007","dev":"JF","model":"MO5","elevCode":"FAR","buyer":"SPEC","pm":"JBEDAW","stage":"O","pourSlab":"2025-09-04","dryingHome":"2025-09-19","drywall":"2025-10-20","cabinets":"2025-11-19","finalClean":"2025-12-15"}];
+
+  var STAGE_INFO = {
+    F: { next: "L", watchField: "pourSlab", watchLabel: "Pour Slab", dueField: "dryingHome", dueLabel: "Drying Home" },
+    L: { next: "O", watchField: "drywall", watchLabel: "Drywall", dueField: "cabinets", dueLabel: "Cabinets" },
+    O: { next: "Q", watchField: "cabinets", watchLabel: "Cabinets", dueField: "finalClean", dueLabel: "Final Clean" },
+    Q: null
+  };
+  var STAGE_NAMES = { F: "Foundation", L: "Framing", O: "Trim / Finish", Q: "Final / Custom Options" };
+  var STAGE_SECTION_MAP = { F: "STAGE F", L: "STAGE L & I", O: "STAGE O", Q: null };
+  var ALERT_WINDOW_DAYS = 7;
+
+  function isSpecOrModel(h) { return h.buyer === "SPEC" || h.buyer === "MODEL"; }
+
+  function parseYmd(s) {
+    if (!s) return null;
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+    if (!m) return null;
+    return new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+  }
+  function daysBetween(a, b) { return Math.round((b - a) / 86400000); }
+  function todayMidnight() { var d = new Date(); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+
+  // Ported from house-release-tracker/assets/dashboard.js, with one addition: a spec/model
+  // home has no buyer to pick custom options, so it terminates at O instead of advancing to Q.
+  function evaluateHouse(h, today) {
+    var info = STAGE_INFO[h.stage];
+    if (h.stage === "O" && isSpecOrModel(h)) info = null;
+    if (!info) return { status: "done", transition: null, daysToDue: null };
+    var watchDate = parseYmd(h[info.watchField]);
+    var dueDate = parseYmd(h[info.dueField]);
+    var watchPast = watchDate ? daysBetween(watchDate, today) >= 0 : false;
+    if (!watchPast) return { status: "ontrack", transition: info, daysToDue: dueDate ? daysBetween(today, dueDate) : null };
+    var daysToDue = dueDate ? daysBetween(today, dueDate) : null;
+    var status;
+    if (daysToDue === null) status = "approaching";
+    else if (daysToDue < 0) status = "overdue";
+    else if (daysToDue <= ALERT_WINDOW_DAYS) status = "approaching";
+    else status = "ontrack";
+    return { status: status, transition: info, daysToDue: daysToDue };
+  }
+
+  function statusBadge(status, daysToDue) {
+    if (status === "overdue") return { cls: "critical", text: (daysToDue !== null ? Math.abs(daysToDue) : "?") + "d overdue" };
+    if (status === "approaching") {
+      if (daysToDue === 0) return { cls: "warning", text: "Due today" };
+      if (daysToDue === 1) return { cls: "warning", text: "Due tomorrow" };
+      return { cls: "warning", text: "Due in " + daysToDue + "d" };
+    }
+    if (status === "done") return { cls: "ok", text: "Final stage" };
+    return { cls: "ok", text: "On track" };
+  }
+
+  var SECTION_ORDER = ["STAGE Z", "STAGE F", "STAGE O", "STAGE L & I", "STAGE 1", "Custom"];
+
+  var CHECKLIST_TEMPLATE = [{"section": "STAGE Z", "groupCode": "015", "groupLabel": "Finished Lot", "code": "015-01", "label": "Land - Finished Vacant Lot", "order": 0}, {"section": "STAGE Z", "groupCode": "205", "groupLabel": "Permits & Fees", "code": "205-02", "label": "Permit Runners", "order": 1}, {"section": "STAGE Z", "groupCode": "205", "groupLabel": "Permits & Fees", "code": "205-03", "label": "Impact Fees", "order": 2}, {"section": "STAGE Z", "groupCode": "205", "groupLabel": "Permits & Fees", "code": "205-05", "label": "Compaction Test", "order": 3}, {"section": "STAGE Z", "groupCode": "205", "groupLabel": "Permits & Fees", "code": "205-06", "label": "Soil Testing", "order": 4}, {"section": "STAGE Z", "groupCode": "210", "groupLabel": "Temp Utilities", "code": "210-01", "label": "Temp Water", "order": 5}, {"section": "STAGE Z", "groupCode": "210", "groupLabel": "Temp Utilities", "code": "210-02", "label": "Electric service", "order": 6}, {"section": "STAGE Z", "groupCode": "215", "groupLabel": "Engineering", "code": "215-01", "label": "Fees", "order": 7}, {"section": "STAGE Z", "groupCode": "215", "groupLabel": "Engineering", "code": "215-02", "label": "Architecture Fees", "order": 8}, {"section": "STAGE Z", "groupCode": "220", "groupLabel": "Surveying", "code": "220-01", "label": "Site Plan", "order": 9}, {"section": "STAGE Z", "groupCode": "220", "groupLabel": "Surveying", "code": "220-02", "label": "House Staking", "order": 10}, {"section": "STAGE Z", "groupCode": "220", "groupLabel": "Surveying", "code": "220-05", "label": "Final Survey", "order": 11}, {"section": "STAGE Z", "groupCode": "220", "groupLabel": "Surveying", "code": "220-10", "label": "Boundary", "order": 12}, {"section": "STAGE Z", "groupCode": "605", "groupLabel": "Builder's Risk", "code": "605-01", "label": "Fee", "order": 13}, {"section": "STAGE Z", "groupCode": "615", "groupLabel": "Finance", "code": "615-01", "label": "Origination Fee", "order": 14}, {"section": "STAGE Z", "groupCode": "615", "groupLabel": "Finance", "code": "615-02", "label": "Loan Interest", "order": 15}, {"section": "STAGE Z", "groupCode": "620", "groupLabel": "Commissions", "code": "620-01", "label": "In House", "order": 16}, {"section": "STAGE Z", "groupCode": "620", "groupLabel": "Commissions", "code": "620-02", "label": "Outside Agents", "order": 17}, {"section": "STAGE F", "groupCode": "220", "groupLabel": "Surveying", "code": "220-03", "label": "Form Board Survey", "order": 18}, {"section": "STAGE F", "groupCode": "220", "groupLabel": "Surveying", "code": "220-04", "label": "Foundation Certificate", "order": 19}, {"section": "STAGE F", "groupCode": "220", "groupLabel": "Surveying", "code": "220-07", "label": "Elevation Certificate", "order": 20}, {"section": "STAGE F", "groupCode": "220", "groupLabel": "Surveying", "code": "220-08", "label": "Drainage Plan", "order": 21}, {"section": "STAGE F", "groupCode": "220", "groupLabel": "Surveying", "code": "220-09", "label": "Topo", "order": 22}, {"section": "STAGE F", "groupCode": "230", "groupLabel": "Earthwork", "code": "230-01", "label": "Lot Clearing", "order": 23}, {"section": "STAGE F", "groupCode": "230", "groupLabel": "Earthwork", "code": "230-02", "label": "Build Pad", "order": 24}, {"section": "STAGE F", "groupCode": "230", "groupLabel": "Earthwork", "code": "230-03", "label": "Fill Dirt", "order": 25}, {"section": "STAGE F", "groupCode": "230", "groupLabel": "Earthwork", "code": "230-04", "label": "Rough Grade", "order": 26}, {"section": "STAGE F", "groupCode": "230", "groupLabel": "Earthwork", "code": "230-07", "label": "Silt Fence", "order": 27}, {"section": "STAGE F", "groupCode": "230", "groupLabel": "Earthwork", "code": "230-08", "label": "Dirt Compaction", "order": 28}, {"section": "STAGE F", "groupCode": "230", "groupLabel": "Earthwork", "code": "230-09", "label": "Lot Scrape", "order": 29}, {"section": "STAGE F", "groupCode": "240", "groupLabel": "Foundation", "code": "240-01", "label": "Monoslab", "order": 30}, {"section": "STAGE F", "groupCode": "245", "groupLabel": "Lumber", "code": "245-01", "label": "Whole House", "order": 31}, {"section": "STAGE F", "groupCode": "250", "groupLabel": "Framing Labor", "code": "250-01", "label": "Final", "order": 32}, {"section": "STAGE F", "groupCode": "255", "groupLabel": "Trusses", "code": "255-01", "label": "Roof", "order": 33}, {"section": "STAGE F", "groupCode": "260", "groupLabel": "Windows", "code": "260-01", "label": "Turnkey", "order": 34}, {"section": "STAGE F", "groupCode": "270", "groupLabel": "Roofing", "code": "270-01", "label": "Turnkey", "order": 35}, {"section": "STAGE F", "groupCode": "285", "groupLabel": "Termite", "code": "285-01", "label": "Treatment", "order": 36}, {"section": "STAGE F", "groupCode": "305", "groupLabel": "Plumbing", "code": "305-01", "label": "Rough-in", "order": 37}, {"section": "STAGE F", "groupCode": "315", "groupLabel": "Electric", "code": "315-01", "label": "Rough", "order": 38}, {"section": "STAGE F", "groupCode": "320", "groupLabel": "HVAC", "code": "320-01", "label": "Rough", "order": 39}, {"section": "STAGE F", "groupCode": "370", "groupLabel": "Masonry", "code": "370-01", "label": "Block Turnkey", "order": 40}, {"section": "STAGE F", "groupCode": "470", "groupLabel": "Trash", "code": "470-02", "label": "Dumpster Pick-Up 1", "order": 41}, {"section": "STAGE F", "groupCode": "470", "groupLabel": "Trash", "code": "470-03", "label": "Dumpster Pick-Up 2", "order": 42}, {"section": "STAGE F", "groupCode": "470", "groupLabel": "Trash", "code": "470-08", "label": "Portable Toilet  Month 2", "order": 43}, {"section": "STAGE O", "groupCode": "230", "groupLabel": "Earthwork", "code": "230-05", "label": "Final Grade", "order": 44}, {"section": "STAGE O", "groupCode": "435", "groupLabel": "Landscaping", "code": "435-01", "label": "Sod", "order": 45}, {"section": "STAGE O", "groupCode": "435", "groupLabel": "Landscaping", "code": "435-02", "label": "Package", "order": 46}, {"section": "STAGE O", "groupCode": "435", "groupLabel": "Landscaping", "code": "435-03", "label": "Irrigation", "order": 47}, {"section": "STAGE O", "groupCode": "455", "groupLabel": "Appliances", "code": "455-02", "label": "Kitchen Drop", "order": 48}, {"section": "STAGE O", "groupCode": "465", "groupLabel": "Cleaning", "code": "465-01", "label": "Pressure Washing", "order": 49}, {"section": "STAGE O", "groupCode": "465", "groupLabel": "Cleaning", "code": "465-03", "label": "Final", "order": 50}, {"section": "STAGE O", "groupCode": "470", "groupLabel": "Trash", "code": "470-06", "label": "Dumpster Pick-Up 5", "order": 51}, {"section": "STAGE O", "groupCode": "470", "groupLabel": "Trash", "code": "470-10", "label": "Portable Toilet  Month 4", "order": 52}, {"section": "STAGE L & I", "groupCode": "225", "groupLabel": "Inspections", "code": "225-01", "label": "Blower Door Test", "order": 53}, {"section": "STAGE L & I", "groupCode": "225", "groupLabel": "Inspections", "code": "225-04", "label": "Duct Test", "order": 54}, {"section": "STAGE L & I", "groupCode": "230", "groupLabel": "Earthwork", "code": "230-06", "label": "Driveway Cut", "order": 55}, {"section": "STAGE L & I", "groupCode": "265", "groupLabel": "Ext. Doors", "code": "265-01", "label": "Turnkey", "order": 56}, {"section": "STAGE L & I", "groupCode": "300", "groupLabel": "Water", "code": "300-01", "label": "Well", "order": 57}, {"section": "STAGE L & I", "groupCode": "305", "groupLabel": "Plumbing", "code": "305-02", "label": "Top Out", "order": 58}, {"section": "STAGE L & I", "groupCode": "305", "groupLabel": "Plumbing", "code": "305-03", "label": "Fixtures", "order": 59}, {"section": "STAGE L & I", "groupCode": "310", "groupLabel": "Septic", "code": "310-01", "label": "Septic System", "order": 60}, {"section": "STAGE L & I", "groupCode": "310", "groupLabel": "Septic", "code": "310-02", "label": "ATU - Septic System", "order": 61}, {"section": "STAGE L & I", "groupCode": "315", "groupLabel": "Electric", "code": "315-02", "label": "Trimout", "order": 62}, {"section": "STAGE L & I", "groupCode": "315", "groupLabel": "Electric", "code": "315-03", "label": "Electrical Fixtures", "order": 63}, {"section": "STAGE L & I", "groupCode": "315", "groupLabel": "Electric", "code": "315-04", "label": "Conduits", "order": 64}, {"section": "STAGE L & I", "groupCode": "320", "groupLabel": "HVAC", "code": "320-02", "label": "Trimout", "order": 65}, {"section": "STAGE L & I", "groupCode": "330", "groupLabel": "Insulation", "code": "330-01", "label": "Walls", "order": 66}, {"section": "STAGE L & I", "groupCode": "330", "groupLabel": "Insulation", "code": "330-02", "label": "Attic", "order": 67}, {"section": "STAGE L & I", "groupCode": "335", "groupLabel": "Drywall", "code": "335-01", "label": "Turnkey", "order": 68}, {"section": "STAGE L & I", "groupCode": "340", "groupLabel": "Siding", "code": "340-01", "label": "Turnkey", "order": 69}, {"section": "STAGE L & I", "groupCode": "345", "groupLabel": "Soffit & Fascia", "code": "345-01", "label": "Turnkey", "order": 70}, {"section": "STAGE L & I", "groupCode": "370", "groupLabel": "Masonry", "code": "370-02", "label": "Stone Turnkey", "order": 71}, {"section": "STAGE L & I", "groupCode": "375", "groupLabel": "Stucco", "code": "375-01", "label": "Turnkey", "order": 72}, {"section": "STAGE L & I", "groupCode": "380", "groupLabel": "Garage Doors", "code": "380-01", "label": "Turnkey", "order": 73}, {"section": "STAGE L & I", "groupCode": "390", "groupLabel": "Int Door & Trim", "code": "390-01", "label": "Trim 1", "order": 74}, {"section": "STAGE L & I", "groupCode": "390", "groupLabel": "Int Door & Trim", "code": "390-02", "label": "Trim 2", "order": 75}, {"section": "STAGE L & I", "groupCode": "390", "groupLabel": "Int Door & Trim", "code": "390-03", "label": "Hardware", "order": 76}, {"section": "STAGE L & I", "groupCode": "395", "groupLabel": "Specialties", "code": "395-01", "label": "Wire Shelving", "order": 77}, {"section": "STAGE L & I", "groupCode": "395", "groupLabel": "Specialties", "code": "395-02", "label": "Mirrors", "order": 78}, {"section": "STAGE L & I", "groupCode": "395", "groupLabel": "Specialties", "code": "395-03", "label": "Shower Enclosures", "order": 79}, {"section": "STAGE L & I", "groupCode": "400", "groupLabel": "Painting", "code": "400-01", "label": "First Paint", "order": 80}, {"section": "STAGE L & I", "groupCode": "400", "groupLabel": "Painting", "code": "400-02", "label": "Final Paint", "order": 81}, {"section": "STAGE L & I", "groupCode": "400", "groupLabel": "Painting", "code": "400-03", "label": "Cool Deck Paint", "order": 82}, {"section": "STAGE L & I", "groupCode": "400", "groupLabel": "Painting", "code": "400-04", "label": "Paint Punch Out", "order": 83}, {"section": "STAGE L & I", "groupCode": "405", "groupLabel": "Flooring", "code": "405-01", "label": "House - Floors", "order": 84}, {"section": "STAGE L & I", "groupCode": "405", "groupLabel": "Flooring", "code": "405-02", "label": "Bathroom - Floors", "order": 85}, {"section": "STAGE L & I", "groupCode": "405", "groupLabel": "Flooring", "code": "405-03", "label": "Bathroom - Shower Wall", "order": 86}, {"section": "STAGE L & I", "groupCode": "405", "groupLabel": "Flooring", "code": "405-04", "label": "Bathroom - Shower Pan", "order": 87}, {"section": "STAGE L & I", "groupCode": "405", "groupLabel": "Flooring", "code": "405-05", "label": "Kitchen - Backsplash", "order": 88}, {"section": "STAGE L & I", "groupCode": "410", "groupLabel": "Cabinets", "code": "410-01", "label": "Turnkey", "order": 89}, {"section": "STAGE L & I", "groupCode": "415", "groupLabel": "Countertops", "code": "415-01", "label": "Turnkey", "order": 90}, {"section": "STAGE L & I", "groupCode": "430", "groupLabel": "Ext. Flatwork", "code": "430-01", "label": "Driveway/Walks/Patios", "order": 91}, {"section": "STAGE L & I", "groupCode": "430", "groupLabel": "Ext. Flatwork", "code": "430-04", "label": "Culvert Installation", "order": 92}, {"section": "STAGE L & I", "groupCode": "430", "groupLabel": "Ext. Flatwork", "code": "430-05", "label": "Asphalt Patch", "order": 93}, {"section": "STAGE L & I", "groupCode": "430", "groupLabel": "Ext. Flatwork", "code": "430-06", "label": "Culvert Material", "order": 94}, {"section": "STAGE L & I", "groupCode": "465", "groupLabel": "Cleaning", "code": "465-02", "label": "Rough", "order": 95}, {"section": "STAGE L & I", "groupCode": "465", "groupLabel": "Cleaning", "code": "465-04", "label": "Reclean", "order": 96}, {"section": "STAGE L & I", "groupCode": "470", "groupLabel": "Trash", "code": "470-04", "label": "Dumpster Pick-Up 3", "order": 97}, {"section": "STAGE L & I", "groupCode": "470", "groupLabel": "Trash", "code": "470-05", "label": "Dumpster Pick-Up 4", "order": 98}, {"section": "STAGE L & I", "groupCode": "470", "groupLabel": "Trash", "code": "470-09", "label": "Portable Toilet  Month 3", "order": 99}, {"section": "STAGE 1", "groupCode": "470", "groupLabel": "Trash", "code": "470-01", "label": "Portable Toilet  Month 1", "order": 100}];
+
+  var state = {};       // lot -> items array (local cache, mirrors Supabase)
+  var editingIds = {};  // item id -> true, while its inline editor is open
+  var queueEl = document.getElementById("queue");
+  var appliedTs = {};   // lot -> _ts of the version currently applied, for merge comparisons
+  var defaultOpenSectionByLot = {}; // lot -> which checklist section opens by default (matches current release stage)
+
+  function fmtDate(iso) {
+    var p = iso.split("-");
+    var months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    return months[parseInt(p[1],10)-1] + " " + parseInt(p[2],10);
+  }
+  function escapeHtml(s) {
+    return (s || "").replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function uid() {
+    return "i" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  }
+
+  function makeTemplateItems() {
+    return CHECKLIST_TEMPLATE.map(function (t) {
+      return {
+        id: uid(),
+        section: t.section,
+        groupCode: t.groupCode,
+        groupLabel: t.groupLabel,
+        code: t.code,
+        label: t.label,
+        amount: null,
+        order: t.order,
+        checked: false,
+        notes: ""
+      };
+    });
+  }
+
+  function fmtAmount(n) {
+    if (n === null || n === undefined || n === "" || isNaN(n)) return "";
+    var neg = n < 0;
+    var s = "$" + Math.abs(Number(n)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return neg ? "(" + s + ")" : s;
+  }
+  function parseAmountInput(v) {
+    v = (v || "").replace(/[^0-9.\-]/g, "");
+    if (v === "" || v === "-") return null;
+    var n = parseFloat(v);
+    return isNaN(n) ? null : n;
+  }
+
+  function buildHouseCard(h) {
+    var card = document.createElement("div");
+    card.className = "house";
+    card.dataset.lot = h.id;
+
+    var today = todayMidnight();
+    var ev = evaluateHouse(h, today);
+    var badge = statusBadge(ev.status, ev.daysToDue);
+    var buyerLabel = h.buyer === "SPEC" ? "Spec" : (h.buyer === "MODEL" ? "Model" : h.buyer);
+    defaultOpenSectionByLot[h.id] = STAGE_SECTION_MAP[h.stage] || null;
+
+    var dateLine = "";
+    if (ev.transition) {
+      dateLine = ev.transition.watchLabel + " " + fmtDate(h[ev.transition.watchField]) + " → " + ev.transition.dueLabel + " " + fmtDate(h[ev.transition.dueField]);
+    } else if (h.stage === "O" && isSpecOrModel(h)) {
+      dateLine = "Spec/model home — no Q release needed";
+    } else if (h.stage === "Q") {
+      dateLine = "Awaiting buyer custom-options sign-off";
+    }
+
+    card.innerHTML =
+      '<div class="house-head">' +
+        '<div>' +
+          '<div class="house-id">' + escapeHtml(h.id) + ' &middot; Comp ' + escapeHtml(h.comp) + '</div>' +
+          '<div class="house-address">' + escapeHtml(h.address) + '</div>' +
+          '<div class="house-meta">' +
+            '<span>' + escapeHtml(DEV_NAMES[h.dev] || h.dev) + '</span>' +
+            '<span>' + escapeHtml(h.model) + (h.elevCode ? '/' + escapeHtml(h.elevCode) : '') + '</span>' +
+            '<span>PM ' + escapeHtml(h.pm || "—") + '</span>' +
+            '<span class="buyer-tag">' + escapeHtml(buyerLabel) + '</span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="eta-badge">' +
+          '<span class="stage-pill">Stage ' + h.stage + ' — ' + escapeHtml(STAGE_NAMES[h.stage] || "") + '</span>' +
+          '<span class="eta-pill ' + badge.cls + '">' + badge.text + '</span>' +
+          (dateLine ? '<span class="eta-date">' + escapeHtml(dateLine) + '</span>' : '') +
+          '<span class="house-progress" data-role="house-progress"></span>' +
+          '<span class="nobudget-badge" data-role="nobudget-badge" style="display:none">No Budget</span>' +
+        '</div>' +
+      '</div>' +
+      '<div class="checklist-section" data-role="checklist"></div>';
+    return card;
+  }
+
+  function itemRowHtml(lot, item) {
+    var isEditing = !!editingIds[item.id];
+    var actions = isEditing
+      ? '<button class="icon-btn" data-act="save">Save</button><button class="icon-btn" data-act="cancel">Cancel</button>'
+      : '<button class="icon-btn" data-act="edit">Edit</button>' +
+        '<button class="icon-btn' + (item.notesOpen ? ' active' : '') + '" data-act="note" data-role="note-btn">Comment' + (item.notes ? ' •' : '') + '</button>' +
+        '<button class="icon-btn danger" data-act="del">Remove</button>';
+
+    var middleHtml = isEditing
+      ? '<div class="edit-fields">' +
+          '<input type="text" class="item-edit-code" data-role="edit-code" value="' + escapeHtml(item.code || "") + '" placeholder="code">' +
+          '<input type="text" class="item-edit-input" data-role="edit-label" value="' + escapeHtml(item.label) + '" placeholder="description">' +
+          '<input type="text" inputmode="decimal" class="item-edit-amount" data-role="edit-amount" value="' + (item.amount === null || item.amount === undefined ? "" : item.amount) + '" placeholder="$ amount">' +
+        '</div>'
+      : (item.code ? '<span class="item-code">' + escapeHtml(item.code) + '</span>' : '') +
+        '<div class="item-text" data-role="text"></div>' +
+        (fmtAmount(item.amount) ? '<span class="item-amount">' + fmtAmount(item.amount) + '</span>' : '');
+
+    var html =
+      '<div class="item-row">' +
+        '<input type="checkbox" ' + (item.checked ? "checked" : "") + '>' +
+        middleHtml +
+        '<div class="item-actions">' + actions + '</div>' +
+      '</div>' +
+      '<div class="item-notes-wrap" data-role="notes-wrap" style="display:' + (item.notesOpen ? "block" : "none") + '">' +
+        '<textarea class="item-notes" data-role="notes-area" placeholder="Add a comment…">' + escapeHtml(item.notes || "") + '</textarea>' +
+      '</div>';
+    return html;
+  }
+
+  function wireItemRow(row, lot, item) {
+    row.dataset.itemId = item.id;
+    row.querySelector('input[type="checkbox"]').addEventListener("change", function (e) {
+      updateItem(lot, item.id, { checked: e.target.checked });
+    });
+
+    if (editingIds[item.id]) {
+      var codeInput = row.querySelector('[data-role="edit-code"]');
+      var labelInput = row.querySelector('[data-role="edit-label"]');
+      var amountInput = row.querySelector('[data-role="edit-amount"]');
+      labelInput.focus();
+      labelInput.select();
+      function commit() {
+        var val = labelInput.value.trim();
+        delete editingIds[item.id];
+        if (val) {
+          updateItem(lot, item.id, {
+            label: val,
+            code: codeInput.value.trim(),
+            amount: parseAmountInput(amountInput.value)
+          });
+        } else {
+          renderItems(lot);
+        }
+      }
+      function cancel() { delete editingIds[item.id]; renderItems(lot); }
+      [codeInput, labelInput, amountInput].forEach(function (el) {
+        el.addEventListener("keydown", function (e) {
+          if (e.key === "Enter") { e.preventDefault(); commit(); }
+          if (e.key === "Escape") { cancel(); }
+        });
+      });
+      row.querySelector('[data-act="save"]').addEventListener("click", commit);
+      row.querySelector('[data-act="cancel"]').addEventListener("click", cancel);
+      return;
+    }
+
+    row.querySelector('[data-role="text"]').textContent = item.label;
+    row.querySelector('[data-act="edit"]').addEventListener("click", function () {
+      editingIds[item.id] = true;
+      renderItems(lot);
+    });
+    var noteBtn = row.querySelector('[data-role="note-btn"]');
+    var notesWrap = row.querySelector('[data-role="notes-wrap"]');
+    noteBtn.addEventListener("click", function () {
+      item.notesOpen = !item.notesOpen;
+      notesWrap.style.display = item.notesOpen ? "block" : "none";
+      noteBtn.classList.toggle("active", item.notesOpen);
+      if (item.notesOpen) row.querySelector('[data-role="notes-area"]').focus();
+    });
+    row.querySelector('[data-act="del"]').addEventListener("click", function () {
+      removeItem(lot, item.id);
+    });
+
+    var notesArea = row.querySelector('[data-role="notes-area"]');
+    notesArea.addEventListener("input", function () {
+      scheduleNotesSave(lot, item.id, notesArea.value);
+    });
+    notesArea.addEventListener("blur", function () {
+      flushNotesSave(lot, item.id, notesArea.value);
+    });
+  }
+
+  function renderItems(lot) {
+    var card = queueEl.querySelector('.house[data-lot="' + lot + '"]');
+    if (!card) return;
+    var items = (state[lot] || []).slice().sort(function (a, b) { return a.order - b.order; });
+    var checklistEl = card.querySelector('[data-role="checklist"]');
+    var progressEl = card.querySelector('[data-role="house-progress"]');
+
+    var totalChecked = items.filter(function (i) { return i.checked; }).length;
+    var totalAmount = items.reduce(function (sum, i) { return sum + (typeof i.amount === "number" ? i.amount : 0); }, 0);
+    progressEl.textContent = items.length
+      ? (totalChecked + " / " + items.length + " reviewed" + (totalAmount ? " · " + fmtAmount(totalAmount) + " tracked" : ""))
+      : "No items";
+
+    var noBudget = !(totalAmount > 0);
+    card.dataset.nobudget = noBudget ? "true" : "false";
+    var nbBadge = card.querySelector('[data-role="nobudget-badge"]');
+    if (nbBadge) nbBadge.style.display = noBudget ? "" : "none";
+
+    // Preserve which stage sections the viewer already had open across this rebuild.
+    var openSections = {};
+    Array.prototype.forEach.call(checklistEl.querySelectorAll(".stage"), function (d) {
+      var label = d.querySelector("summary span");
+      if (label) openSections[label.textContent] = d.open;
+    });
+
+    // Bucket by section, then by group, preserving item order within each.
+    var bySection = {};
+    items.forEach(function (item) {
+      var sec = item.section || "Custom";
+      if (!bySection[sec]) bySection[sec] = { order: item.order, groups: {}, groupOrder: [] };
+      var gKey = (item.groupCode || "") + "|" + (item.groupLabel || "");
+      if (!bySection[sec].groups[gKey]) {
+        bySection[sec].groups[gKey] = { code: item.groupCode, label: item.groupLabel || "Added", items: [] };
+        bySection[sec].groupOrder.push(gKey);
+      }
+      bySection[sec].groups[gKey].items.push(item);
+    });
+
+    checklistEl.innerHTML = "";
+    SECTION_ORDER.forEach(function (secName) {
+      var sec = bySection[secName];
+      if (!sec) return;
+      var secItems = [];
+      sec.groupOrder.forEach(function (gk) { secItems = secItems.concat(sec.groups[gk].items); });
+      var secChecked = secItems.filter(function (i) { return i.checked; }).length;
+
+      var details = document.createElement("details");
+      details.className = "stage";
+      details.open = openSections.hasOwnProperty(secName) ? openSections[secName] : (secName === defaultOpenSectionByLot[lot]);
+      var summary = document.createElement("summary");
+      summary.innerHTML = '<span>' + escapeHtml(secName) + '</span><span class="stage-count">' + secChecked + ' / ' + secItems.length + '</span>';
+      details.appendChild(summary);
+
+      var body = document.createElement("div");
+      body.className = "stage-body";
+
+      sec.groupOrder.forEach(function (gk) {
+        var group = sec.groups[gk];
+        var groupWrap = document.createElement("div");
+        groupWrap.className = "code-group";
+        var labelHtml = '<div class="code-group-label">' + (group.code ? '<span class="code">' + escapeHtml(group.code) + '</span>' : '') + escapeHtml(group.label) + '</div>';
+        var itemsWrap = document.createElement("div");
+        itemsWrap.className = "items";
+        group.items.forEach(function (item) {
+          var row = document.createElement("div");
+          row.className = "item" + (item.checked ? " checked" : "") + (item.notes ? " has-note" : "");
+          row.innerHTML = itemRowHtml(lot, item);
+          wireItemRow(row, lot, item);
+          itemsWrap.appendChild(row);
+        });
+        groupWrap.innerHTML = labelHtml;
+        groupWrap.appendChild(itemsWrap);
+        body.appendChild(groupWrap);
+      });
+
+      details.appendChild(body);
+      checklistEl.appendChild(details);
+    });
+
+    var addRow = document.createElement("div");
+    addRow.className = "add-row";
+    addRow.innerHTML = '<input type="text" placeholder="Add a custom work order or cost code…" data-role="add-input" maxlength="200"><button class="add-btn" data-role="add-btn">+ Add</button>';
+    checklistEl.appendChild(addRow);
+    addRow.querySelector('[data-role="add-input"]').addEventListener("keydown", function (e) {
+      if (e.key === "Enter") { addItem(lot, e.target.value); e.target.value = ""; }
+    });
+    addRow.querySelector('[data-role="add-btn"]').addEventListener("click", function () {
+      var input = addRow.querySelector('[data-role="add-input"]');
+      addItem(lot, input.value);
+      input.value = "";
+    });
+
+    renderSummary();
+  }
+
+  function persist(lot) {
+    var items = (state[lot] || []).map(function (i) {
+      var copy = Object.assign({}, i);
+      delete copy.notesOpen; // transient UI state only
+      return copy;
+    });
+    var ts = Date.now();
+    appliedTs[lot] = ts;
+    remoteBlob.houses[lot] = { items: items, _ts: ts };
+    saveLocalCache();
+    scheduleRemoteSave();
+  }
+
+  function addItem(lot, text) {
+    text = text.trim();
+    if (!text) return;
+    state[lot] = state[lot] || [];
+    var maxOrder = state[lot].reduce(function (m, i) { return Math.max(m, i.order || 0); }, 0);
+    state[lot].push({ id: uid(), section: "Custom", groupCode: "", groupLabel: "Added", code: "", label: text, amount: null, order: maxOrder + 1, checked: false, notes: "" });
+    renderItems(lot);
+    persist(lot);
+  }
+  function updateItem(lot, id, patch) {
+    state[lot] = (state[lot] || []).map(function (i) { return i.id === id ? Object.assign({}, i, patch) : i; });
+    renderItems(lot);
+    persist(lot);
+  }
+  function removeItem(lot, id) {
+    state[lot] = (state[lot] || []).filter(function (i) { return i.id !== id; });
+    delete editingIds[id];
+    delete notesDebounce[id];
+    renderItems(lot);
+    persist(lot);
+  }
+
+  // Comments save on a short debounce (and immediately on blur) WITHOUT forcing a
+  // full re-render — a full rebuild while someone is mid-sentence would destroy the
+  // textarea's focus and any unsaved text. Only the "has a comment" indicator updates live.
+  var notesDebounce = {};
+  function applyNoteIndicator(lot, id, value) {
+    var row = queueEl.querySelector('.house[data-lot="' + lot + '"] .item[data-item-id="' + id + '"]');
+    if (!row) return;
+    row.classList.toggle("has-note", !!value);
+    var btn = row.querySelector('[data-role="note-btn"]');
+    if (btn) btn.textContent = "Comment" + (value ? " •" : "");
+  }
+  function saveNotes(lot, id, value) {
+    var found = false;
+    (state[lot] || []).forEach(function (i) { if (i.id === id) { i.notes = value; found = true; } });
+    if (!found) return;
+    applyNoteIndicator(lot, id, value);
+    persist(lot);
+  }
+  function scheduleNotesSave(lot, id, value) {
+    clearTimeout(notesDebounce[id]);
+    notesDebounce[id] = setTimeout(function () { saveNotes(lot, id, value); }, 600);
+  }
+  function flushNotesSave(lot, id, value) {
+    clearTimeout(notesDebounce[id]);
+    saveNotes(lot, id, value);
+  }
+
+  function renderSummary() {
+    var today = todayMidnight();
+    var overdue = 0, soon = 0;
+    HOUSES.forEach(function (h) {
+      var ev = evaluateHouse(h, today);
+      if (ev.status === "overdue") overdue++;
+      else if (ev.status === "approaching") soon++;
+    });
+    var totalItems = 0, checkedItems = 0, noBudgetHouses = 0;
+    Object.keys(state).forEach(function (lot) {
+      var items = state[lot] || [];
+      var lotAmount = 0;
+      items.forEach(function (i) {
+        totalItems++;
+        if (i.checked) checkedItems++;
+        if (typeof i.amount === "number") lotAmount += i.amount;
+      });
+      if (!(lotAmount > 0)) noBudgetHouses++;
+    });
+    document.getElementById("sumOverdue").textContent = overdue;
+    document.getElementById("sumSoon").textContent = soon;
+    document.getElementById("sumHouses").textContent = HOUSES.length;
+    document.getElementById("sumChecked").textContent = checkedItems + " / " + totalItems;
+    document.getElementById("sumNoBudget").textContent = noBudgetHouses;
+  }
+
+  // ---- Filtering (pure show/hide over already-built cards; never touches checklist DOM) ----
+  var elFSearch = document.getElementById("fSearch");
+  var elFStage = document.getElementById("fStage");
+  var elFStatus = document.getElementById("fStatus");
+  var elFDev = document.getElementById("fDev");
+  var elFNoBudget = document.getElementById("fNoBudget");
+  var elFilterCount = document.getElementById("filterCount");
+
+  var devSeen = {};
+  HOUSES.forEach(function (h) { devSeen[h.dev] = true; });
+  Object.keys(devSeen).sort().forEach(function (code) {
+    var opt = document.createElement("option");
+    opt.value = code;
+    opt.textContent = DEV_NAMES[code] || code;
+    elFDev.appendChild(opt);
+  });
+
+  function applyFilters() {
+    var q = elFSearch.value.trim().toLowerCase();
+    var stage = elFStage.value;
+    var status = elFStatus.value;
+    var dev = elFDev.value;
+    var noBudgetOnly = elFNoBudget.checked;
+    var shown = 0;
+    Array.prototype.forEach.call(queueEl.querySelectorAll(".house"), function (card) {
+      var ok = true;
+      if (stage && card.dataset.stage !== stage) ok = false;
+      if (status && card.dataset.status !== status) ok = false;
+      if (dev && card.dataset.dev !== dev) ok = false;
+      if (noBudgetOnly && card.dataset.nobudget !== "true") ok = false;
+      if (ok && q && card.dataset.search.indexOf(q) === -1) ok = false;
+      card.style.display = ok ? "" : "none";
+      if (ok) shown++;
+    });
+    elFilterCount.textContent = shown + " of " + HOUSES.length + " houses shown";
+  }
+  elFSearch.addEventListener("input", applyFilters);
+  elFStage.addEventListener("change", applyFilters);
+  elFStatus.addEventListener("change", applyFilters);
+  elFDev.addEventListener("change", applyFilters);
+  elFNoBudget.addEventListener("change", applyFilters);
+
+  // Build cards in urgency order (overdue first), seeded with the full template so the page
+  // never looks empty while the database loads in behind it.
+  var today0 = todayMidnight();
+  HOUSES.slice()
+    .sort(function (a, b) {
+      var ea = evaluateHouse(a, today0), eb = evaluateHouse(b, today0);
+      var order = { overdue: 0, approaching: 1, ontrack: 2, done: 3 };
+      var oa = order[ea.status], ob = order[eb.status];
+      if (oa !== ob) return oa - ob;
+      var da = ea.daysToDue === null || ea.daysToDue === undefined ? 0 : ea.daysToDue;
+      var db = eb.daysToDue === null || eb.daysToDue === undefined ? 0 : eb.daysToDue;
+      return da - db;
+    })
+    .forEach(function (h) {
+      state[h.id] = makeTemplateItems();
+      var card = buildHouseCard(h);
+      var ev = evaluateHouse(h, today0);
+      card.dataset.stage = h.stage;
+      card.dataset.status = ev.status;
+      card.dataset.dev = h.dev;
+      card.dataset.search = [h.address, h.id, h.pm, h.buyer].join(" ").toLowerCase();
+      queueEl.appendChild(card);
+      renderItems(h.id);
+    });
+  renderSummary();
+  applyFilters();
+
+  // ---- Sync: Supabase, same project + pattern as the permit tracker ----
+  // One row (id=1) in house_release_database holds every house's checklist state as one
+  // jsonb blob, exactly like permit_database does for permits. Realtime pushes changes to
+  // every open tab instantly; a 30s poll and localStorage cache cover the gaps, also matching
+  // the permit tracker's own fallback behavior.
+  var SB_URL = "https://raqiscditxkvgadiostr.supabase.co";
+  var SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJhcWlzY2RpdHhrdmdhZGlvc3RyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0ODM1NTMsImV4cCI6MjA5NjA1OTU1M30.5Y2c6kiORxfGN_BLdGk_InwnoYxAqlH55ruuZNzeVKQ";
+  var SB_TABLE = "house_release_database";
+  var LOCAL_CACHE_KEY = "estela_house_release_v1";
+
+  var _sbClient = null;
+  var _lastRemoteVersion = 0;
+  var _saveTimer = null;
+  var _saveInFlight = false;
+  var _saveQueued = false;
+  var remoteBlob = { version: 0, updatedBy: "", houses: {} };
+
+  function getSB() {
+    if (!_sbClient && window.supabase) _sbClient = window.supabase.createClient(SB_URL, SB_KEY);
+    return _sbClient;
+  }
+
+  function saveLocalCache() {
+    try { localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify(remoteBlob)); } catch (e) {}
+  }
+  function loadLocalCache() {
+    try {
+      var raw = localStorage.getItem(LOCAL_CACHE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
+
+  // Apply an incoming blob (from cache, initial load, or realtime) — per house, keep
+  // whichever version (what's already applied locally vs incoming) is newer by _ts.
+  function applyIncoming(blob) {
+    if (!blob || !blob.houses) return;
+    Object.keys(blob.houses).forEach(function (lot) {
+      var incoming = blob.houses[lot];
+      if (!incoming || !Array.isArray(incoming.items)) return;
+      var incomingTs = incoming._ts || 0;
+      if (incomingTs <= (appliedTs[lot] || 0)) return; // ours is newer or equal; keep it
+      appliedTs[lot] = incomingTs;
+      remoteBlob.houses[lot] = incoming;
+
+      var prevOpen = {};
+      (state[lot] || []).forEach(function (i) { if (i.notesOpen) prevOpen[i.id] = true; });
+      state[lot] = incoming.items.map(function (i) {
+        return prevOpen[i.id] ? Object.assign({}, i, { notesOpen: true }) : i;
+      });
+      if (queueEl.querySelector('.house[data-lot="' + lot + '"]')) renderItems(lot);
+    });
+    renderSummary();
+  }
+
+  function pushRemote() {
+    var sb = getSB();
+    if (!sb) { document.getElementById("connBanner").classList.add("show"); return Promise.resolve(); }
+    if (_saveInFlight) { _saveQueued = true; return Promise.resolve(); }
+    _saveInFlight = true;
+    // Fetch-merge-write: pull the latest remote first so a save from this tab never
+    // clobbers a different house that a colleague just updated in theirs.
+    return sb.from(SB_TABLE).select("data").eq("id", 1).single().then(function (res) {
+      var remote = res && res.data && res.data.data;
+      if (remote && remote.houses) {
+        Object.keys(remote.houses).forEach(function (lot) {
+          var r = remote.houses[lot];
+          var mine = remoteBlob.houses[lot];
+          if (r && (!mine || (r._ts || 0) > (mine._ts || 0))) remoteBlob.houses[lot] = r;
+        });
+      }
+      remoteBlob.version = Date.now();
+      remoteBlob.updatedBy = "Estela Living team";
+      return sb.from(SB_TABLE).upsert({ id: 1, data: remoteBlob, updated_at: new Date().toISOString() });
+    }).then(function (res) {
+      if (res && res.error) throw res.error;
+      _lastRemoteVersion = remoteBlob.version;
+      document.getElementById("connBanner").classList.remove("show");
+    }).catch(function (err) {
+      console.warn("Supabase save failed:", err);
+      document.getElementById("connBanner").classList.add("show");
+    }).then(function () {
+      _saveInFlight = false;
+      if (_saveQueued) { _saveQueued = false; pushRemote(); }
+    });
+  }
+  function scheduleRemoteSave() {
+    clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(pushRemote, 800);
+  }
+
+  function pullRemote() {
+    var sb = getSB();
+    if (!sb) return Promise.resolve();
+    return sb.from(SB_TABLE).select("data").eq("id", 1).single().then(function (res) {
+      var d = res && res.data && res.data.data;
+      if (!d) return;
+      if (d.version && d.version <= _lastRemoteVersion) return;
+      _lastRemoteVersion = d.version || _lastRemoteVersion;
+      applyIncoming(d);
+      saveLocalCache();
+    }, function () {
+      document.getElementById("connBanner").classList.add("show");
+    });
+  }
+
+  function startRealtime() {
+    var sb = getSB();
+    if (!sb) return;
+    sb.channel("house-release-db")
+      .on("postgres_changes", { event: "*", schema: "public", table: SB_TABLE, filter: "id=eq.1" }, function (payload) {
+        var d = payload.new && payload.new.data;
+        if (!d || (d.version && d.version <= _lastRemoteVersion)) return;
+        _lastRemoteVersion = d.version || _lastRemoteVersion;
+        applyIncoming(d);
+        saveLocalCache();
+      })
+      .subscribe();
+  }
+
+  // 1) Paint instantly from whatever we cached locally last time.
+  applyIncoming(loadLocalCache());
+  // 2) Then reconcile with Supabase, and stay live from there on.
+  var sbReady = !!window.supabase;
+  if (sbReady) {
+    pullRemote().then(startRealtime);
+    setInterval(pullRemote, 30000); // safety net if the realtime channel ever drops
+  } else {
+    document.getElementById("connBanner").classList.add("show");
+  }
+})();
+</script>
 </body>
 </html>
