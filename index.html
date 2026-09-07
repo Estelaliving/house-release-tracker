@@ -541,7 +541,7 @@
 <div class="wrap">
   <div class="eyebrow">House Release Tracker</div>
   <h1>Stage Release Queue</h1>
-  <p class="subtitle">Every house past permit, tracked through its <b>F → L → O → Q</b> release milestones — dates ported from house-release-tracker, checklist from <b>CHECKLIST V2.xlsx</b>. Spec/model homes stop at O; only sold houses need a Q (custom options) release. Check off, edit, comment on, or remove any line as it's reviewed.</p>
+  <p class="subtitle">Every house past permit, tracked through its <b>F → L → O → Q</b> release milestones — dates ported from house-release-tracker, checklist from <b>CHECKLIST V2.xlsx</b>. Spec homes stop at O; any other buyer (a real name, or Model) needs a Q (custom options) release. Check off, edit, comment on, or remove any line as it's reviewed.</p>
 
   <div class="summary-row">
     <div class="summary-tile tone-critical">
@@ -613,7 +613,7 @@
   var STAGE_SECTION_MAP = { F: "STAGE F", L: "STAGE L", O: "STAGE O", Q: null };
   var ALERT_WINDOW_DAYS = 7;
 
-  function isSpecOrModel(h) { return h.buyer === "SPEC" || h.buyer === "MODEL"; }
+  function isSpec(h) { return h.buyer === "SPEC"; }
 
   function parseYmd(s) {
     if (!s) return null;
@@ -624,11 +624,11 @@
   function daysBetween(a, b) { return Math.round((b - a) / 86400000); }
   function todayMidnight() { var d = new Date(); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
 
-  // Ported from house-release-tracker/assets/dashboard.js, with one addition: a spec/model
+  // Ported from house-release-tracker/assets/dashboard.js, with one addition: a spec
   // home has no buyer to pick custom options, so it terminates at O instead of advancing to Q.
   function evaluateHouse(h, today) {
     var info = STAGE_INFO[h.stage];
-    if (h.stage === "O" && isSpecOrModel(h)) info = null;
+    if (h.stage === "O" && isSpec(h)) info = null;
     if (!info) return { status: "done", transition: null, daysToDue: null };
     var watchDate = parseYmd(h[info.watchField]);
     var dueDate = parseYmd(h[info.dueField]);
@@ -742,8 +742,8 @@
     var dateLine = "";
     if (ev.transition) {
       dateLine = ev.transition.watchLabel + " " + fmtDate(h[ev.transition.watchField]) + " → " + ev.transition.dueLabel + " " + fmtDate(h[ev.transition.dueField]);
-    } else if (h.stage === "O" && isSpecOrModel(h)) {
-      dateLine = "Spec/model home — no Q release needed";
+    } else if (h.stage === "O" && isSpec(h)) {
+      dateLine = "Spec home — no Q release needed";
     } else if (h.stage === "Q") {
       dateLine = "Awaiting buyer custom-options sign-off";
     }
