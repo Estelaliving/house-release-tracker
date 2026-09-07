@@ -365,6 +365,18 @@
     flex: none;
     white-space: nowrap;
   }
+  .item-budget-info {
+    font-family: "IBM Plex Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 11px;
+    color: var(--text-muted);
+    padding-top: 3px;
+    flex: none;
+    white-space: nowrap;
+  }
+  .item-budget-info b { color: var(--text); font-weight: 500; }
+  .item-budget-info.variance { color: var(--warning); }
+  .item-budget-info.variance b { color: var(--warning); }
   .edit-fields {
     display: flex;
     flex: 1;
@@ -696,6 +708,26 @@
     return isNaN(n) ? null : n;
   }
 
+  // Real budget/actual figures from the accounting system's API, keyed by
+  // house number then cost code ("015-01"). Populated by loadBudgetData().
+  var budgetIndex = {};
+  var houseBudgetTotals = {}; // lot -> summed budgetamount across its lines
+  var budgetDataLoaded = false;
+
+  function budgetInfoHtml(lot, item) {
+    if (!budgetDataLoaded || !item.code) return "";
+    var info = (budgetIndex[lot] || {})[item.code];
+    if (!info) return "";
+    var parts = [];
+    if (info.budget !== null) parts.push("Budget <b>" + fmtAmount(info.budget) + "</b>");
+    if (info.actual !== null) parts.push("Actual <b>" + fmtAmount(info.actual) + "</b>");
+    if (!parts.length) return "";
+    // Flag a line where the team's own confirmed amount disagrees with the system budget
+    // by more than a cent, so a real typo or a stale system estimate stands out visually.
+    var variance = (item.amount !== null && item.amount !== undefined && info.budget !== null && Math.abs(item.amount - info.budget) > 0.01);
+    return '<span class="item-budget-info' + (variance ? " variance" : "") + '">' + parts.join(" · ") + '</span>';
+  }
+
   function buildHouseCard(h) {
     var card = document.createElement("div");
     card.className = "house";
@@ -756,7 +788,8 @@
         '</div>'
       : (item.code ? '<span class="item-code">' + escapeHtml(item.code) + '</span>' : '') +
         '<div class="item-text" data-role="text"></div>' +
-        (fmtAmount(item.amount) ? '<span class="item-amount">' + fmtAmount(item.amount) + '</span>' : '');
+        (fmtAmount(item.amount) ? '<span class="item-amount">' + fmtAmount(item.amount) + '</span>' : '') +
+        budgetInfoHtml(lot, item);
 
     var html =
       '<div class="item-row">' +
@@ -846,10 +879,14 @@
       ? (totalChecked + " / " + items.length + " reviewed" + (totalAmount ? " · " + fmtAmount(totalAmount) + " tracked" : ""))
       : "No items";
 
-    var noBudget = !(totalAmount > 0);
-    card.dataset.nobudget = noBudget ? "true" : "false";
-    var nbBadge = card.querySelector('[data-role="nobudget-badge"]');
-    if (nbBadge) nbBadge.style.display = noBudget ? "" : "none";
+    // "No Budget" reflects the real accounting-system budget (via the housebudget API),
+    // not whether the team has reviewed/confirmed a line yet -- those are different things.
+    if (budgetDataLoaded) {
+      var noBudget = !(houseBudgetTotals[lot] > 0);
+      card.dataset.nobudget = noBudget ? "true" : "false";
+      var nbBadge = card.querySelector('[data-role="nobudget-badge"]');
+      if (nbBadge) nbBadge.style.display = noBudget ? "" : "none";
+    }
 
     // Preserve which stage sections the viewer already had open across this rebuild.
     var openSections = {};
@@ -998,22 +1035,21 @@
       if (ev.status === "overdue") overdue++;
       else if (ev.status === "approaching") soon++;
     });
-    var totalItems = 0, checkedItems = 0, noBudgetHouses = 0;
+    var totalItems = 0, checkedItems = 0;
     Object.keys(state).forEach(function (lot) {
-      var items = state[lot] || [];
-      var lotAmount = 0;
-      items.forEach(function (i) {
+      (state[lot] || []).forEach(function (i) {
         totalItems++;
         if (i.checked) checkedItems++;
-        if (typeof i.amount === "number") lotAmount += i.amount;
       });
-      if (!(lotAmount > 0)) noBudgetHouses++;
     });
     document.getElementById("sumOverdue").textContent = overdue;
     document.getElementById("sumSoon").textContent = soon;
     document.getElementById("sumHouses").textContent = HOUSES.length;
     document.getElementById("sumChecked").textContent = checkedItems + " / " + totalItems;
-    document.getElementById("sumNoBudget").textContent = noBudgetHouses;
+    if (budgetDataLoaded) {
+      var noBudgetHouses = HOUSES.filter(function (h) { return !(houseBudgetTotals[h.id] > 0); }).length;
+      document.getElementById("sumNoBudget").textContent = noBudgetHouses;
+    }
   }
 
   // ---- Filtering (pure show/hide over already-built cards; never touches checklist DOM) ----
@@ -1214,6 +1250,42 @@
   } else {
     document.getElementById("connBanner").classList.add("show");
   }
+
+  // ---- Real budget data, from the accounting system's own API (not this tool's storage) ----
+  var BUDGET_API_URL = "https://ugen7uxo8f.execute-api.us-east-2.amazonaws.com/prod/housebudget";
+  var BUDGET_REFRESH_MS = 300000; // 5 min -- accounting data doesn't change minute to minute
+
+  function loadBudgetData() {
+    return fetch(BUDGET_API_URL).then(function (r) {
+      if (!r.ok) throw new Error("status " + r.status);
+      return r.json();
+    }).then(function (rows) {
+      var idx = {};
+      var totals = {};
+      rows.forEach(function (row) {
+        var lot = row.housenumber;
+        var code = row.categorycode + "-" + row.costcode;
+        var budget = (row.budgetamount === null || row.budgetamount === undefined) ? null : parseFloat(row.budgetamount);
+        var actual = (row.actual === null || row.actual === undefined) ? null : parseFloat(row.actual);
+        if (budget !== null && isNaN(budget)) budget = null;
+        if (actual !== null && isNaN(actual)) actual = null;
+        if (!idx[lot]) idx[lot] = {};
+        idx[lot][code] = { budget: budget, actual: actual };
+        if (budget !== null) totals[lot] = (totals[lot] || 0) + budget;
+      });
+      budgetIndex = idx;
+      houseBudgetTotals = totals;
+      budgetDataLoaded = true;
+      HOUSES.forEach(function (h) {
+        if (queueEl.querySelector('.house[data-lot="' + h.id + '"]')) renderItems(h.id);
+      });
+      renderSummary();
+    }).catch(function (err) {
+      console.warn("Budget API load failed:", err);
+    });
+  }
+  loadBudgetData();
+  setInterval(loadBudgetData, BUDGET_REFRESH_MS);
 })();
 </script>
 </body>
