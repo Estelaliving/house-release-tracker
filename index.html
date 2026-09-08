@@ -644,6 +644,18 @@
     font-size: 13.5px;
   }
   .add-row input[type="text"]::placeholder { color: var(--text-muted); }
+  .cost-search-row { padding: 0 16px; margin-top: 10px; }
+  .cost-search-row input[type="text"] {
+    width: 100%;
+    padding: 7px 10px;
+    border-radius: 7px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    font-family: "IBM Plex Sans", sans-serif;
+    font-size: 13px;
+  }
+  .cost-search-row input[type="text"]::placeholder { color: var(--text-muted); }
   .add-btn {
     font-family: "IBM Plex Sans", sans-serif;
     font-weight: 500;
@@ -1049,7 +1061,11 @@
           '<span class="nobudget-badge" data-role="nobudget-badge" style="display:none">No Budget</span>' +
         '</div>' +
       '</div>' +
+      '<div class="cost-search-row"><input type="text" placeholder="Search cost code or description…" data-role="cost-search"></div>' +
       '<div class="checklist-section" data-role="checklist"></div>';
+    card.querySelector('[data-role="cost-search"]').addEventListener("input", function (e) {
+      filterChecklist(h.id, e.target.value);
+    });
     return card;
   }
 
@@ -1217,6 +1233,7 @@
         group.items.forEach(function (item) {
           var row = document.createElement("div");
           row.className = "item" + (item.checked ? " checked" : "") + (item.notes ? " has-note" : "");
+          row.dataset.search = ((item.code || "") + " " + (item.label || "")).toLowerCase();
           row.innerHTML = itemRowHtml(lot, item);
           wireItemRow(row, lot, item);
           itemsWrap.appendChild(row);
@@ -1243,7 +1260,61 @@
       input.value = "";
     });
 
+    // Re-apply whatever's currently in the search box -- the checklist DOM above was just
+    // rebuilt from scratch, so any earlier filtering (hidden rows, forced-open sections) is gone.
+    var searchInput = card.querySelector('[data-role="cost-search"]');
+    if (searchInput && searchInput.value) filterChecklist(lot, searchInput.value);
+
     renderSummary();
+  }
+
+  // Per-house live search across cost code + description -- lets you jump straight to a
+  // specific cost code in a ~100-item checklist instead of expanding every section to find it.
+  var searchPriorOpen = {};
+  function filterChecklist(lot, rawQuery) {
+    var card = queueEl.querySelector('.house[data-lot="' + lot + '"]');
+    if (!card) return;
+    var checklistEl = card.querySelector('[data-role="checklist"]');
+    var query = (rawQuery || "").trim().toLowerCase();
+    var sections = Array.prototype.slice.call(checklistEl.querySelectorAll(".stage"));
+
+    if (!query) {
+      Array.prototype.forEach.call(checklistEl.querySelectorAll(".item"), function (r) { r.style.display = ""; });
+      Array.prototype.forEach.call(checklistEl.querySelectorAll(".code-group"), function (g) { g.style.display = ""; });
+      sections.forEach(function (s) {
+        s.style.display = "";
+        var label = s.querySelector("summary span");
+        var name = label ? label.textContent : null;
+        if (searchPriorOpen[lot] && name && searchPriorOpen[lot].hasOwnProperty(name)) s.open = searchPriorOpen[lot][name];
+      });
+      delete searchPriorOpen[lot];
+      return;
+    }
+
+    if (!searchPriorOpen[lot]) {
+      searchPriorOpen[lot] = {};
+      sections.forEach(function (s) {
+        var label = s.querySelector("summary span");
+        var name = label ? label.textContent : null;
+        if (name) searchPriorOpen[lot][name] = s.open;
+      });
+    }
+
+    sections.forEach(function (sectionEl) {
+      var sectionHasMatch = false;
+      Array.prototype.forEach.call(sectionEl.querySelectorAll(".code-group"), function (groupEl) {
+        var groupHasMatch = false;
+        Array.prototype.forEach.call(groupEl.querySelectorAll(".item"), function (row) {
+          var match = (row.dataset.search || "").indexOf(query) !== -1;
+          row.style.display = match ? "" : "none";
+          if (match) groupHasMatch = true;
+        });
+        groupEl.style.display = groupHasMatch ? "" : "none";
+        if (groupHasMatch) sectionHasMatch = true;
+      });
+      sectionEl.style.display = sectionHasMatch ? "" : "none";
+      if (sectionHasMatch) sectionEl.open = true;
+    });
   }
 
   function persist(lot) {
