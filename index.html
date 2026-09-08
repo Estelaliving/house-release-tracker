@@ -1391,6 +1391,26 @@
     });
   }
 
+  // Shared by applyFilters() (the house list) and renderAlertsPanel()'s New Stage F
+  // section (pre-release candidates) -- only the fields that actually apply pre-release.
+  function activeCandidateFilters() {
+    return {
+      q: elFSearch.value.trim().toLowerCase(),
+      dev: elFDev.value,
+      comp: elFComp.value,
+      pm: elFPm.value,
+      model: elFModel.value
+    };
+  }
+  function candidateMatchesFilters(c, f) {
+    if (f.dev && c.dev !== f.dev) return false;
+    if (f.comp && c.comp !== f.comp) return false;
+    if (f.pm && c.pm !== f.pm) return false;
+    if (f.model && c.model !== f.model) return false;
+    if (f.q && (c.address || "").toLowerCase().indexOf(f.q) === -1 && (c.pm || "").toLowerCase().indexOf(f.q) === -1) return false;
+    return true;
+  }
+
   function applyFilters() {
     var q = elFSearch.value.trim().toLowerCase();
     var stage = elFStage.value;
@@ -1418,16 +1438,20 @@
     });
     elFilterCount.textContent = shown + " of " + HOUSES.length + " houses shown";
   }
-  elFSearch.addEventListener("input", applyFilters);
-  elFStage.addEventListener("change", applyFilters);
-  elFPm.addEventListener("change", applyFilters);
-  elFModel.addEventListener("change", applyFilters);
-  elFBuyer.addEventListener("change", applyFilters);
-  elFSort.addEventListener("change", function () { applySort(); applyFilters(); });
-  elFComp.addEventListener("change", applyFilters);
-  elFStatus.addEventListener("change", applyFilters);
-  elFDev.addEventListener("change", applyFilters);
-  elFNoBudget.addEventListener("change", applyFilters);
+  function refreshView() {
+    applyFilters();
+    if (typeof renderAlertsPanel === "function") renderAlertsPanel();
+  }
+  elFSearch.addEventListener("input", refreshView);
+  elFStage.addEventListener("change", refreshView);
+  elFPm.addEventListener("change", refreshView);
+  elFModel.addEventListener("change", refreshView);
+  elFBuyer.addEventListener("change", refreshView);
+  elFSort.addEventListener("change", function () { applySort(); refreshView(); });
+  elFComp.addEventListener("change", refreshView);
+  elFStatus.addEventListener("change", refreshView);
+  elFDev.addEventListener("change", refreshView);
+  elFNoBudget.addEventListener("change", refreshView);
 
   // Adds one house's card to the live page. Used for the initial build below, and again
   // whenever a permit-tracker candidate gets released to Stage F at runtime.
@@ -1760,8 +1784,16 @@
       countNewF.textContent = "–";
     } else if (!permitCandidates.length) {
       listNewF.innerHTML = '<div class="alert-empty">No new permits under review need a Stage F release right now.</div>';
+      countNewF.textContent = "0";
+      countNewF.classList.remove("has-items");
     } else {
-      permitCandidates.slice(0, 15).forEach(function (c) {
+      var candFilters = activeCandidateFilters();
+      var filteredCandidates = permitCandidates.filter(function (c) { return candidateMatchesFilters(c, candFilters); });
+      var candFiltersActive = candFilters.q || candFilters.dev || candFilters.comp || candFilters.pm || candFilters.model;
+      if (!filteredCandidates.length) {
+        listNewF.innerHTML = '<div class="alert-empty">No new-release candidates match the current filters.</div>';
+      }
+      filteredCandidates.slice(0, 15).forEach(function (c) {
         var cd = c.cityDays;
         var waitCls = cd === null ? "" : (cd >= 60 ? "critical" : (cd >= 30 ? "warning" : ""));
         var waitBadge = cd === null ? "" : '<span class="alert-row-badge ' + waitCls + '">' + cd + "d at city</span>";
@@ -1785,16 +1817,16 @@
         });
         listNewF.appendChild(row);
       });
-      if (permitCandidates.length > 15) {
+      if (filteredCandidates.length > 15) {
         var moreF = document.createElement("div");
         moreF.className = "alert-more";
-        moreF.textContent = "+ " + (permitCandidates.length - 15) + " more — check the permit tracker directly";
+        moreF.textContent = "+ " + (filteredCandidates.length - 15) + " more — narrow with the filters above";
         listNewF.appendChild(moreF);
       }
-    }
-    if (permitCandidatesLoaded) {
-      countNewF.textContent = permitCandidates.length;
-      countNewF.classList.toggle("has-items", permitCandidates.length > 0);
+      if (permitCandidatesLoaded) {
+        countNewF.textContent = candFiltersActive ? (filteredCandidates.length + " / " + permitCandidates.length) : permitCandidates.length;
+        countNewF.classList.toggle("has-items", filteredCandidates.length > 0);
+      }
     }
 
     // 2) Stage transitions due
