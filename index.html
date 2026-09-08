@@ -243,6 +243,8 @@
     font-size: 12px;
     padding: 3px 8px;
     border-radius: 999px;
+    background: var(--surface-2);
+    color: var(--text-muted);
   }
   .alert-row-badge.critical { background: var(--critical-soft); color: var(--critical); }
   .alert-row-badge.warning { background: var(--warning-soft); color: var(--warning); }
@@ -1510,12 +1512,15 @@
           model: p.model,
           elevation: p.elevation,
           pm: p.projectManager,
+          submittedDate: (p.stageDates || {}).submitted || null,
           permitEta: (p.stageDates || {}).permitIssued || null
         };
       }).sort(function (a, b) {
-        if (!a.permitEta) return 1;
-        if (!b.permitEta) return -1;
-        return a.permitEta < b.permitEta ? -1 : 1;
+        // Longest-waiting-since-submitted first -- that's the real urgency signal, not the
+        // target approval date (which is often just an estimate this early).
+        if (!a.submittedDate) return 1;
+        if (!b.submittedDate) return -1;
+        return a.submittedDate < b.submittedDate ? -1 : 1;
       });
       permitCandidatesLoaded = true;
       renderAlertsPanel();
@@ -1571,14 +1576,23 @@
     } else if (!permitCandidates.length) {
       listNewF.innerHTML = '<div class="alert-empty">No new permits under review need a Stage F release right now.</div>';
     } else {
+      var todayForWait = todayMidnight();
       permitCandidates.slice(0, 15).forEach(function (c) {
+        var submittedDateObj = c.submittedDate ? parseYmd(c.submittedDate) : null;
+        var daysWaiting = submittedDateObj ? daysBetween(submittedDateObj, todayForWait) : null;
+        var waitCls = daysWaiting === null ? "" : (daysWaiting >= 45 ? "critical" : (daysWaiting >= 21 ? "warning" : ""));
+        var waitBadge = daysWaiting === null ? "" : '<span class="alert-row-badge ' + waitCls + '">' + daysWaiting + "d since submitted</span>";
         var row = document.createElement("div");
         row.className = "alert-row";
         row.innerHTML =
           '<div class="alert-row-main">' +
             '<div class="alert-row-title">' + escapeHtml(c.address) + "</div>" +
-            '<div class="alert-row-meta">' + escapeHtml(c.community) + " · " + escapeHtml(c.model || "") + " · PM " + escapeHtml(c.pm || "—") + (c.permitEta ? " · Permit ETA " + fmtDate(c.permitEta) : "") + "</div>" +
+            '<div class="alert-row-meta">' + escapeHtml(c.community) + " · " + escapeHtml(c.model || "") + " · PM " + escapeHtml(c.pm || "—") +
+              (c.submittedDate ? " · Submitted " + fmtDate(c.submittedDate) : "") +
+              (c.permitEta ? " · Permit ETA " + fmtDate(c.permitEta) : "") +
+            "</div>" +
           "</div>" +
+          waitBadge +
           '<button class="alert-action-btn" type="button">Release Stage F</button>';
         row.querySelector("button").addEventListener("click", function (e) {
           e.target.disabled = true;
