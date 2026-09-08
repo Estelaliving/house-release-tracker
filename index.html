@@ -271,6 +271,69 @@
     font-style: italic;
   }
 
+  .batch-worklist {
+    margin-top: 16px;
+    border: 1px solid var(--accent);
+    border-radius: 10px;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .batch-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 12px 16px;
+    background: var(--accent-soft);
+  }
+  .batch-title {
+    font-family: "Barlow Condensed", sans-serif;
+    font-weight: 600;
+    font-size: 15px;
+    letter-spacing: 0.01em;
+    color: var(--accent);
+  }
+  .batch-count {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12.5px;
+    color: var(--text-muted);
+  }
+  .batch-list { max-height: 480px; overflow-y: auto; }
+  .batch-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .batch-row:last-child { border-bottom: none; }
+  .batch-row-main { flex: 1; min-width: 0; }
+  .batch-row-title {
+    font-size: 13.5px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .batch-row-meta {
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .batch-stage-pill {
+    flex: none;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: var(--surface-2);
+    color: var(--text-muted);
+  }
+  .batch-stage-pill.needs-f { background: var(--nobudget-soft); color: var(--nobudget); }
+
   .filter-bar label.checkbox-toggle {
     display: flex;
     align-items: center;
@@ -749,6 +812,14 @@
       <option value="budget">Sort: Budget tracked, high→low</option>
     </select>
     <span class="filter-count" id="filterCount"></span>
+  </div>
+
+  <div class="batch-worklist" id="batchWorklist" style="display:none">
+    <div class="batch-head">
+      <span class="batch-title" id="batchTitle"></span>
+      <span class="batch-count" id="batchCount"></span>
+    </div>
+    <div class="batch-list" id="batchList"></div>
   </div>
 
   <div class="conn-banner" id="connBanner">Couldn't reach the shared database just now — your changes are still saved on this device and will sync once the connection is back.</div>
@@ -1455,6 +1526,7 @@
   function refreshView() {
     applyFilters();
     if (typeof renderAlertsPanel === "function") renderAlertsPanel();
+    if (typeof renderBatchWorklist === "function") renderBatchWorklist();
   }
   elFSearch.addEventListener("input", refreshView);
   elFStage.addEventListener("change", refreshView);
@@ -1569,6 +1641,7 @@
     });
     renderSummary();
     if (typeof renderAlertsPanel === "function") renderAlertsPanel();
+    if (typeof renderBatchWorklist === "function") renderBatchWorklist();
   }
 
   function pushRemote() {
@@ -1677,6 +1750,7 @@
       });
       renderSummary();
       if (typeof renderAlertsPanel === "function") renderAlertsPanel();
+      if (typeof renderBatchWorklist === "function") renderBatchWorklist();
     }).catch(function (err) {
       console.warn("Budget API load failed:", err);
     });
@@ -1746,6 +1820,7 @@
       });
       permitCandidatesLoaded = true;
       renderAlertsPanel();
+      if (typeof renderBatchWorklist === "function") renderBatchWorklist();
     }).catch(function (err) {
       console.warn("Permit candidates load failed:", err);
       document.getElementById("alertListNewF").innerHTML = '<div class="alert-empty">Couldn\'t reach the permit tracker\'s data just now — will retry automatically.</div>';
@@ -1777,6 +1852,7 @@
     renderSummary();
     permitCandidates = permitCandidates.filter(function (c) { return c.permitId !== candidate.permitId; });
     renderAlertsPanel();
+    if (typeof renderBatchWorklist === "function") renderBatchWorklist();
     card.style.display = "";
     card.scrollIntoView({ behavior: "smooth", block: "start" });
   }
@@ -1934,7 +2010,80 @@
     }
   }
 
+  // A focused, single-list view for "release everything for this company + development,
+  // no matter what stage it's at" -- combines pending permit-tracker candidates (which
+  // need a Stage F release) with already-tracked houses of any stage, in one place, so
+  // going through a company/development batch doesn't mean checking two separate sections.
+  // Only appears once both Company and Development are picked; reuses whichever cards
+  // applyFilters() just decided are visible, so it's never out of sync with the filter bar.
+  function renderBatchWorklist() {
+    var comp = elFComp.value, dev = elFDev.value;
+    var container = document.getElementById("batchWorklist");
+    if (!comp || !dev) { container.style.display = "none"; return; }
+    container.style.display = "";
+
+    var candFilters = activeCandidateFilters();
+    var pendingRows = permitCandidates
+      .filter(function (c) { return candidateMatchesFilters(c, candFilters); })
+      .sort(candidateSortComparator(elFSort.value));
+
+    var trackedRows = [];
+    Array.prototype.forEach.call(queueEl.querySelectorAll(".house"), function (card) {
+      if (card.style.display === "none") return;
+      var h = HOUSES.filter(function (x) { return x.id === card.dataset.lot; })[0];
+      if (h) trackedRows.push(h);
+    });
+
+    var title = "Comp " + comp + (companyNames[comp] ? " — " + companyNames[comp] : "") + " · " + (DEV_NAMES[dev] || dev);
+    document.getElementById("batchTitle").textContent = "Batch Worklist — " + title;
+    var total = pendingRows.length + trackedRows.length;
+    document.getElementById("batchCount").textContent = total + " total · " + pendingRows.length + " need Stage F release";
+
+    var list = document.getElementById("batchList");
+    list.innerHTML = "";
+    if (!total) {
+      list.innerHTML = '<div class="alert-empty">Nothing for this company + development combination right now.</div>';
+      return;
+    }
+
+    pendingRows.forEach(function (c) {
+      var row = document.createElement("div");
+      row.className = "batch-row";
+      row.innerHTML =
+        '<span class="batch-stage-pill needs-f">Needs F</span>' +
+        '<div class="batch-row-main">' +
+          '<div class="batch-row-title">' + escapeHtml(c.address) + "</div>" +
+          '<div class="batch-row-meta">' + escapeHtml(c.model || "") + " · PM " + escapeHtml(c.pm || "—") + (c.cityDays !== null ? " · " + c.cityDays + "d at city" : "") + "</div>" +
+        "</div>" +
+        '<button class="alert-action-btn" type="button">Release Stage F</button>';
+      row.querySelector("button").addEventListener("click", function (e) {
+        e.target.disabled = true;
+        e.target.textContent = "Releasing…";
+        releaseToStageF(c);
+      });
+      list.appendChild(row);
+    });
+
+    trackedRows.forEach(function (h) {
+      var ev = evaluateHouse(h, todayMidnight());
+      var badge = statusBadge(ev.status, ev.daysToDue);
+      var row = document.createElement("div");
+      row.className = "batch-row";
+      row.style.cursor = "pointer";
+      row.innerHTML =
+        '<span class="batch-stage-pill">' + escapeHtml(h.stage) + "</span>" +
+        '<div class="batch-row-main">' +
+          '<div class="batch-row-title">' + escapeHtml(h.address) + "</div>" +
+          '<div class="batch-row-meta">' + escapeHtml(h.model || "") + " · PM " + escapeHtml(h.pm || "—") + "</div>" +
+        "</div>" +
+        '<span class="alert-row-badge ' + badge.cls + '">' + badge.text + "</span>";
+      row.addEventListener("click", function () { scrollToHouse(h.id); });
+      list.appendChild(row);
+    });
+  }
+
   renderAlertsPanel();
+  renderBatchWorklist();
   loadPermitCandidates();
   setInterval(loadPermitCandidates, PERMIT_REFRESH_MS);
 })();
