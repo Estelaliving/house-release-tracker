@@ -724,7 +724,30 @@
     <select id="fDev">
       <option value="">All communities</option>
     </select>
+    <select id="fComp">
+      <option value="">All companies</option>
+    </select>
+    <select id="fPm">
+      <option value="">All PMs</option>
+    </select>
+    <select id="fModel">
+      <option value="">All models</option>
+    </select>
+    <select id="fBuyer">
+      <option value="">All buyer types</option>
+      <option value="spec">Spec only</option>
+      <option value="buyer">Buyer assigned</option>
+    </select>
     <label class="checkbox-toggle"><input type="checkbox" id="fNoBudget"> No budget only</label>
+    <select id="fSort">
+      <option value="urgency">Sort: Most urgent first</option>
+      <option value="address">Sort: Address A→Z</option>
+      <option value="stage">Sort: Stage F→L→O→Q</option>
+      <option value="company">Sort: Company</option>
+      <option value="community">Sort: Community</option>
+      <option value="pm">Sort: PM</option>
+      <option value="budget">Sort: Budget tracked, high→low</option>
+    </select>
     <span class="filter-count" id="filterCount"></span>
   </div>
 
@@ -1243,8 +1266,18 @@
   var elFStage = document.getElementById("fStage");
   var elFStatus = document.getElementById("fStatus");
   var elFDev = document.getElementById("fDev");
+  var elFComp = document.getElementById("fComp");
+  var elFPm = document.getElementById("fPm");
+  var elFModel = document.getElementById("fModel");
+  var elFBuyer = document.getElementById("fBuyer");
   var elFNoBudget = document.getElementById("fNoBudget");
+  var elFSort = document.getElementById("fSort");
   var elFilterCount = document.getElementById("filterCount");
+
+  // Company names are learned as permit data loads (see ownerInfo() in loadPermitCandidates);
+  // most pre-existing houses only have a bare comp code until then, which is fine -- the
+  // filter option just relabels itself once a name is known.
+  var companyNames = {};
 
   var devSeen = {};
   HOUSES.forEach(function (h) { devSeen[h.dev] = true; });
@@ -1263,11 +1296,110 @@
     elFDev.appendChild(opt);
   }
 
+  var compSeen = {};
+  function compLabel(code) {
+    return companyNames[code] ? "Comp " + code + " — " + companyNames[code] : "Comp " + code;
+  }
+  HOUSES.forEach(function (h) { if (h.comp) compSeen[h.comp] = true; });
+  Object.keys(compSeen).sort().forEach(function (code) {
+    var opt = document.createElement("option");
+    opt.value = code;
+    opt.textContent = compLabel(code);
+    opt.dataset.comp = code;
+    elFComp.appendChild(opt);
+  });
+  function ensureCompFilterOption(code) {
+    if (!code) return;
+    if (!compSeen[code]) {
+      compSeen[code] = true;
+      var opt = document.createElement("option");
+      opt.value = code;
+      opt.dataset.comp = code;
+      elFComp.appendChild(opt);
+    }
+    var existing = elFComp.querySelector('option[data-comp="' + code + '"]');
+    if (existing) existing.textContent = compLabel(code);
+  }
+  function learnCompanyName(code, name) {
+    if (!code || !name || companyNames[code] === name) return;
+    companyNames[code] = name;
+    ensureCompFilterOption(code);
+  }
+
+  var pmSeen = {};
+  HOUSES.forEach(function (h) { if (h.pm) pmSeen[h.pm] = true; });
+  Object.keys(pmSeen).sort().forEach(function (name) {
+    var opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name;
+    elFPm.appendChild(opt);
+  });
+  function ensurePmFilterOption(name) {
+    if (!name || pmSeen[name]) return;
+    pmSeen[name] = true;
+    var opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name;
+    elFPm.appendChild(opt);
+  }
+
+  var modelSeen = {};
+  HOUSES.forEach(function (h) { if (h.model) modelSeen[h.model] = true; });
+  Object.keys(modelSeen).sort().forEach(function (name) {
+    var opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name;
+    elFModel.appendChild(opt);
+  });
+  function ensureModelFilterOption(name) {
+    if (!name || modelSeen[name]) return;
+    modelSeen[name] = true;
+    var opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name;
+    elFModel.appendChild(opt);
+  }
+
+  // Sorting reorders the actual DOM nodes (appendChild moves, never clones, so every
+  // listener and every bit of checklist state on a card survives being re-sorted).
+  function sortComparator(mode) {
+    var today = todayMidnight();
+    if (mode === "address") return function (a, b) { return a.address.localeCompare(b.address); };
+    if (mode === "stage") {
+      var stageOrder = { F: 0, L: 1, O: 2, Q: 3 };
+      return function (a, b) { return (stageOrder[a.stage] === undefined ? 9 : stageOrder[a.stage]) - (stageOrder[b.stage] === undefined ? 9 : stageOrder[b.stage]); };
+    }
+    if (mode === "company") return function (a, b) { return (a.comp || "").localeCompare(b.comp || ""); };
+    if (mode === "community") return function (a, b) { return (DEV_NAMES[a.dev] || a.dev || "").localeCompare(DEV_NAMES[b.dev] || b.dev || ""); };
+    if (mode === "pm") return function (a, b) { return (a.pm || "").localeCompare(b.pm || ""); };
+    if (mode === "budget") return function (a, b) { return (houseBudgetTotals[b.id] || 0) - (houseBudgetTotals[a.id] || 0); };
+    // default: urgency, same ordering the page builds with initially
+    return function (a, b) {
+      var ea = evaluateHouse(a, today), eb = evaluateHouse(b, today);
+      var order = { overdue: 0, approaching: 1, ontrack: 2, done: 3 };
+      var oa = order[ea.status], ob = order[eb.status];
+      if (oa !== ob) return oa - ob;
+      var da = ea.daysToDue === null || ea.daysToDue === undefined ? 0 : ea.daysToDue;
+      var db = eb.daysToDue === null || eb.daysToDue === undefined ? 0 : eb.daysToDue;
+      return da - db;
+    };
+  }
+  function applySort() {
+    HOUSES.slice().sort(sortComparator(elFSort.value)).forEach(function (h) {
+      var card = queueEl.querySelector('.house[data-lot="' + h.id + '"]');
+      if (card) queueEl.appendChild(card);
+    });
+  }
+
   function applyFilters() {
     var q = elFSearch.value.trim().toLowerCase();
     var stage = elFStage.value;
     var status = elFStatus.value;
     var dev = elFDev.value;
+    var comp = elFComp.value;
+    var pm = elFPm.value;
+    var model = elFModel.value;
+    var buyer = elFBuyer.value;
     var noBudgetOnly = elFNoBudget.checked;
     var shown = 0;
     Array.prototype.forEach.call(queueEl.querySelectorAll(".house"), function (card) {
@@ -1275,6 +1407,10 @@
       if (stage && card.dataset.stage !== stage) ok = false;
       if (status && card.dataset.status !== status) ok = false;
       if (dev && card.dataset.dev !== dev) ok = false;
+      if (comp && card.dataset.comp !== comp) ok = false;
+      if (pm && card.dataset.pm !== pm) ok = false;
+      if (model && card.dataset.model !== model) ok = false;
+      if (buyer && card.dataset.buyertype !== buyer) ok = false;
       if (noBudgetOnly && card.dataset.nobudget !== "true") ok = false;
       if (ok && q && card.dataset.search.indexOf(q) === -1) ok = false;
       card.style.display = ok ? "" : "none";
@@ -1284,6 +1420,11 @@
   }
   elFSearch.addEventListener("input", applyFilters);
   elFStage.addEventListener("change", applyFilters);
+  elFPm.addEventListener("change", applyFilters);
+  elFModel.addEventListener("change", applyFilters);
+  elFBuyer.addEventListener("change", applyFilters);
+  elFSort.addEventListener("change", function () { applySort(); applyFilters(); });
+  elFComp.addEventListener("change", applyFilters);
   elFStatus.addEventListener("change", applyFilters);
   elFDev.addEventListener("change", applyFilters);
   elFNoBudget.addEventListener("change", applyFilters);
@@ -1297,9 +1438,16 @@
     card.dataset.stage = h.stage;
     card.dataset.status = ev.status;
     card.dataset.dev = h.dev;
+    card.dataset.comp = h.comp || "";
+    card.dataset.pm = h.pm || "";
+    card.dataset.model = h.model || "";
+    card.dataset.buyertype = h.buyer === "SPEC" ? "spec" : "buyer";
     card.dataset.search = [h.address, h.id, h.pm, h.buyer].join(" ").toLowerCase();
     queueEl.appendChild(card);
     renderItems(h.id);
+    ensureCompFilterOption(h.comp);
+    ensurePmFilterOption(h.pm);
+    ensureModelFilterOption(h.model);
     return card;
   }
 
@@ -1536,6 +1684,7 @@
         var submittedDate = (p.stageRequestedAt || {}).submitted || (p.stageCompletedAt || {}).submitted || (p.stageDates || {}).submitted || null;
         var permitEta = (p.stageCompletedAt || {}).permitIssued || (p.stageDates || {}).permitIssued || null;
         var owner = ownerInfo(p);
+        learnCompanyName(owner.comp, owner.companyName);
         return {
           permitId: p.id,
           address: p.address,
