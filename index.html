@@ -1362,6 +1362,20 @@
 
   // Sorting reorders the actual DOM nodes (appendChild moves, never clones, so every
   // listener and every bit of checklist state on a card survives being re-sorted).
+  // Pre-release candidates have no stage/budget/status yet, so modes that depend on those
+  // (stage, budget, urgency) fall back to "longest at city first" -- the closest analog.
+  function candidateSortComparator(mode) {
+    if (mode === "address") return function (a, b) { return a.address.localeCompare(b.address); };
+    if (mode === "company") return function (a, b) { return (a.comp || "").localeCompare(b.comp || ""); };
+    if (mode === "community") return function (a, b) { return (a.community || "").localeCompare(b.community || ""); };
+    if (mode === "pm") return function (a, b) { return (a.pm || "").localeCompare(b.pm || ""); };
+    return function (a, b) {
+      if (a.cityDays === null) return 1;
+      if (b.cityDays === null) return -1;
+      return b.cityDays - a.cityDays;
+    };
+  }
+
   function sortComparator(mode) {
     var today = todayMidnight();
     if (mode === "address") return function (a, b) { return a.address.localeCompare(b.address); };
@@ -1788,7 +1802,8 @@
       countNewF.classList.remove("has-items");
     } else {
       var candFilters = activeCandidateFilters();
-      var filteredCandidates = permitCandidates.filter(function (c) { return candidateMatchesFilters(c, candFilters); });
+      var filteredCandidates = permitCandidates.filter(function (c) { return candidateMatchesFilters(c, candFilters); })
+        .sort(candidateSortComparator(elFSort.value));
       var candFiltersActive = candFilters.q || candFilters.dev || candFilters.comp || candFilters.pm || candFilters.model;
       if (!filteredCandidates.length) {
         listNewF.innerHTML = '<div class="alert-empty">No new-release candidates match the current filters.</div>';
