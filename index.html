@@ -757,6 +757,25 @@
     return null;
   }
 
+  // Ported from permitflow/index.html's own getCityDays(permit) — deliberately not a plain
+  // "today minus submitted": once a target permitIssued date exists it freezes at
+  // (issued - submitted), clamped to 0, rather than counting up to today. Matching this
+  // exactly (rather than a simpler "days since submitted") is the whole point -- it's what
+  // the permit tracker itself shows as "Days at City".
+  function getCityDays(submittedDate, permitEtaDate, overallStatus) {
+    if (!submittedDate) return null;
+    var sub = parseYmd(submittedDate);
+    if (!sub) return null;
+    if (permitEtaDate) {
+      var issued = parseYmd(permitEtaDate);
+      if (issued) return Math.max(0, daysBetween(sub, issued));
+    }
+    if (overallStatus === "submitted" || overallStatus === "permitted" || overallStatus === "co") {
+      return daysBetween(sub, todayMidnight());
+    }
+    return null;
+  }
+
   var STAGE_INFO = {
     F: { next: "L", watchField: "pourSlab", watchLabel: "Pour Slab", dueField: "dryingHome", dueLabel: "Drying Home" },
     L: { next: "O", watchField: "drywall", watchLabel: "Drywall", dueField: "cabinets", dueLabel: "Cabinets" },
@@ -1503,6 +1522,8 @@
         if (!dev || isNaN(lotNum)) return false;
         return !known[dev + "|" + lotNum];
       }).map(function (p) {
+        var submittedDate = (p.stageRequestedAt || {}).submitted || (p.stageCompletedAt || {}).submitted || (p.stageDates || {}).submitted || null;
+        var permitEta = (p.stageCompletedAt || {}).permitIssued || (p.stageDates || {}).permitIssued || null;
         return {
           permitId: p.id,
           address: p.address,
@@ -1512,15 +1533,15 @@
           model: p.model,
           elevation: p.elevation,
           pm: p.projectManager,
-          submittedDate: (p.stageDates || {}).submitted || null,
-          permitEta: (p.stageDates || {}).permitIssued || null
+          submittedDate: submittedDate,
+          permitEta: permitEta,
+          cityDays: getCityDays(submittedDate, permitEta, p.overallStatus)
         };
       }).sort(function (a, b) {
-        // Longest-waiting-since-submitted first -- that's the real urgency signal, not the
-        // target approval date (which is often just an estimate this early).
-        if (!a.submittedDate) return 1;
-        if (!b.submittedDate) return -1;
-        return a.submittedDate < b.submittedDate ? -1 : 1;
+        // Longest at city first -- that's the real urgency signal, not the target approval date.
+        if (a.cityDays === null) return 1;
+        if (b.cityDays === null) return -1;
+        return b.cityDays - a.cityDays;
       });
       permitCandidatesLoaded = true;
       renderAlertsPanel();
@@ -1576,12 +1597,10 @@
     } else if (!permitCandidates.length) {
       listNewF.innerHTML = '<div class="alert-empty">No new permits under review need a Stage F release right now.</div>';
     } else {
-      var todayForWait = todayMidnight();
       permitCandidates.slice(0, 15).forEach(function (c) {
-        var submittedDateObj = c.submittedDate ? parseYmd(c.submittedDate) : null;
-        var daysWaiting = submittedDateObj ? daysBetween(submittedDateObj, todayForWait) : null;
-        var waitCls = daysWaiting === null ? "" : (daysWaiting >= 45 ? "critical" : (daysWaiting >= 21 ? "warning" : ""));
-        var waitBadge = daysWaiting === null ? "" : '<span class="alert-row-badge ' + waitCls + '">' + daysWaiting + "d since submitted</span>";
+        var cd = c.cityDays;
+        var waitCls = cd === null ? "" : (cd >= 60 ? "critical" : (cd >= 30 ? "warning" : ""));
+        var waitBadge = cd === null ? "" : '<span class="alert-row-badge ' + waitCls + '">' + cd + "d at city</span>";
         var row = document.createElement("div");
         row.className = "alert-row";
         row.innerHTML =
