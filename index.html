@@ -924,7 +924,7 @@
     card.innerHTML =
       '<div class="house-head">' +
         '<div>' +
-          '<div class="house-id">' + escapeHtml(h.id) + ' &middot; Comp ' + escapeHtml(h.comp) + '</div>' +
+          '<div class="house-id">' + escapeHtml(h.id) + ' &middot; Comp ' + escapeHtml(h.comp || "—") + (h.companyName ? " (" + escapeHtml(h.companyName) + ")" : "") + '</div>' +
           '<div class="house-address">' + escapeHtml(h.address) + '</div>' +
           '<div class="house-meta">' +
             '<span>' + escapeHtml(DEV_NAMES[h.dev] || h.dev) + '</span>' +
@@ -1511,6 +1511,17 @@
     return sb.from(PERMIT_SB_TABLE).select("data").eq("id", 1).single().then(function (res) {
       var d = res && res.data && res.data.data;
       if (!d || !Array.isArray(d.permits)) return;
+      // The "OWNER" custom field (e.g. "100 · Sabana Owner, LLC") carries the same comp
+      // code the tracked houses already show -- find its key by label, not by the
+      // generated "cf_..." id, so this keeps working if that id ever changes.
+      var ownerFieldKey = null;
+      (d.customFields || []).forEach(function (f) { if (f.label === "OWNER") ownerFieldKey = f.key; });
+      function ownerInfo(p) {
+        var raw = ownerFieldKey && p.customFields ? p.customFields[ownerFieldKey] : null;
+        if (!raw) return { comp: "", companyName: "" };
+        var parts = raw.split(" · ");
+        return { comp: (parts[0] || "").trim(), companyName: (parts[1] || "").trim() };
+      }
       var known = {};
       HOUSES.forEach(function (h) {
         if (h.lotNumber !== null && h.lotNumber !== undefined) known[h.dev + "|" + h.lotNumber] = true;
@@ -1524,6 +1535,7 @@
       }).map(function (p) {
         var submittedDate = (p.stageRequestedAt || {}).submitted || (p.stageCompletedAt || {}).submitted || (p.stageDates || {}).submitted || null;
         var permitEta = (p.stageCompletedAt || {}).permitIssued || (p.stageDates || {}).permitIssued || null;
+        var owner = ownerInfo(p);
         return {
           permitId: p.id,
           address: p.address,
@@ -1533,6 +1545,8 @@
           model: p.model,
           elevation: p.elevation,
           pm: p.projectManager,
+          comp: owner.comp,
+          companyName: owner.companyName,
           submittedDate: submittedDate,
           permitEta: permitEta,
           cityDays: getCityDays(submittedDate, permitEta, p.overallStatus)
@@ -1556,7 +1570,8 @@
     var newHouse = {
       id: candidate.permitId,
       address: candidate.address,
-      comp: "",
+      comp: candidate.comp || "",
+      companyName: candidate.companyName || "",
       dev: candidate.dev,
       model: candidate.model || "",
       elevCode: candidate.elevation || "",
@@ -1607,6 +1622,7 @@
           '<div class="alert-row-main">' +
             '<div class="alert-row-title">' + escapeHtml(c.address) + "</div>" +
             '<div class="alert-row-meta">' + escapeHtml(c.community) + " · " + escapeHtml(c.model || "") + " · PM " + escapeHtml(c.pm || "—") +
+              (c.comp ? " · Comp " + escapeHtml(c.comp) + (c.companyName ? " (" + escapeHtml(c.companyName) + ")" : "") : "") +
               (c.submittedDate ? " · Submitted " + fmtDate(c.submittedDate) : "") +
               (c.permitEta ? " · Permit ETA " + fmtDate(c.permitEta) : "") +
             "</div>" +
