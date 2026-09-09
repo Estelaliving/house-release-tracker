@@ -1990,7 +1990,13 @@
         if (budget !== null && isNaN(budget)) budget = null;
         if (actual !== null && isNaN(actual)) actual = null;
         if (!idx[lot]) idx[lot] = {};
-        idx[lot][code] = { budget: budget, actual: actual, label: row.desccost || row.desccat || "", category: row.desccat || "" };
+        // The accounting system's own category-code ranges split cleanly into direct vs.
+        // soft costs -- confirmed against its own labels: category 201 is literally named
+        // "Direct Costs" and every code below 600 is a physical trade or land/site cost,
+        // while 600+ starts at HOA/Builder's Risk/Insurance/Finance/Closing/Commissions and
+        // category 700 is literally named "Dev Soft Costs".
+        var costType = parseInt(row.categorycode, 10) >= 600 ? "soft" : "direct";
+        idx[lot][code] = { budget: budget, actual: actual, label: row.desccost || row.desccat || "", category: row.desccat || "", costcodeNum: row.costcode, costType: costType };
         if (budget !== null) totals[lot] = (totals[lot] || 0) + budget;
         if (!houseMeta[lot]) {
           houseMeta[lot] = { address: row.address1 || lot, dev: row.developmentcode || "", comp: row.companycode || "", model: row.modelcode || "", elevCode: row.elevationcode || "" };
@@ -2402,7 +2408,7 @@
       // Negative actual is independent of the others -- a line can be both "no budget" and
       // "negative" at once (e.g. a credit posted against a cost code with no budget set).
       if (a !== null && a < -0.01 && Math.abs(a) >= minVariance) flags.push("negative");
-      allLines.push({ code: code, label: info.label, category: info.category, budget: b, actual: a, diff: diff, flags: flags });
+      allLines.push({ code: code, label: info.label, category: info.category, costcodeNum: info.costcodeNum, costType: info.costType, budget: b, actual: a, diff: diff, flags: flags });
     });
     allLines.sort(function (x, y) { return (x.category || "").localeCompare(y.category || "") || x.code.localeCompare(y.code); });
 
@@ -2483,6 +2489,8 @@
         ' data-flags="' + l.flags.join(" ") + '"' +
         ' data-search="' + escapeHtml(searchHay) + '"' +
         ' data-code="' + escapeHtml(l.code) + '"' +
+        ' data-costcode-num="' + escapeHtml(l.costcodeNum || "") + '"' +
+        ' data-cost-type="' + escapeHtml(l.costType || "") + '"' +
         ' data-budget="' + (l.budget !== null ? l.budget : "") + '"' +
         ' data-actual="' + (l.actual !== null ? l.actual : "") + '">' +
         "<td>" + escapeHtml(l.code) + "</td>" +
@@ -2493,11 +2501,19 @@
         "<td>" + (badges || "") + "</td>" +
       "</tr>";
     }).join("");
+    var directCount = a.allLines.filter(function (l) { return l.costType === "direct"; }).length;
+    var softCount = a.allLines.filter(function (l) { return l.costType === "soft"; }).length;
     var lineFilterHtml =
       '<div class="line-filter-bar">' +
         '<input type="text" class="line-search" placeholder="Search cost code, category, description…">' +
+        '<select class="line-cost-type">' +
+          '<option value="">All costs</option>' +
+          '<option value="direct">Direct Cost (' + directCount + ")</option>" +
+          '<option value="soft">Soft Cost (' + softCount + ")</option>" +
+        "</select>" +
         '<select class="line-sort">' +
           '<option value="code">Sort: Cost code A→Z</option>' +
+          '<option value="costcodeNum">Sort: Cost code number</option>' +
           '<option value="budget">Sort: Budget, high→low</option>' +
           '<option value="actual">Sort: Actual, high→low</option>' +
         "</select>" +
@@ -2667,6 +2683,7 @@
   function wireLineFilter(card) {
     var checkboxes = card.querySelectorAll(".line-filter-bar input[type=\"checkbox\"]");
     var searchInput = card.querySelector(".line-search");
+    var costTypeSelect = card.querySelector(".line-cost-type");
     var sortSelect = card.querySelector(".line-sort");
     var tbody = card.querySelector(".all-codes-table tbody");
     if (!checkboxes.length || !tbody) return;
@@ -2676,10 +2693,12 @@
       var active = Array.prototype.filter.call(checkboxes, function (cb) { return cb.checked; })
         .map(function (cb) { return cb.dataset.lineFlag; });
       var q = (searchInput.value || "").trim().toLowerCase();
+      var costType = costTypeSelect.value;
       rows.forEach(function (row) {
         var matchesFlag = !active.length || active.some(function (f) { return (row.dataset.flags || "").split(" ").indexOf(f) !== -1; });
         var matchesSearch = !q || (row.dataset.search || "").indexOf(q) !== -1;
-        row.style.display = (matchesFlag && matchesSearch) ? "" : "none";
+        var matchesCostType = !costType || row.dataset.costType === costType;
+        row.style.display = (matchesFlag && matchesSearch && matchesCostType) ? "" : "none";
       });
     }
 
@@ -2688,6 +2707,10 @@
       var sorted = Array.prototype.slice.call(rows).sort(function (r1, r2) {
         if (mode === "budget") return (parseFloat(r2.dataset.budget) || -Infinity) - (parseFloat(r1.dataset.budget) || -Infinity);
         if (mode === "actual") return (parseFloat(r2.dataset.actual) || -Infinity) - (parseFloat(r1.dataset.actual) || -Infinity);
+        if (mode === "costcodeNum") {
+          return (parseInt(r1.dataset.costcodeNum, 10) || 0) - (parseInt(r2.dataset.costcodeNum, 10) || 0)
+            || (r1.dataset.code || "").localeCompare(r2.dataset.code || "");
+        }
         return (r1.dataset.code || "").localeCompare(r2.dataset.code || "");
       });
       sorted.forEach(function (row) { tbody.appendChild(row); });
@@ -2695,6 +2718,7 @@
 
     Array.prototype.forEach.call(checkboxes, function (cb) { cb.addEventListener("change", applyFilter); });
     searchInput.addEventListener("input", applyFilter);
+    costTypeSelect.addEventListener("change", applyFilter);
     sortSelect.addEventListener("change", applySort);
   }
 
