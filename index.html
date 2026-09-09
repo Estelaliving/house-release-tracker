@@ -701,6 +701,39 @@
     margin-left: auto;
     white-space: nowrap;
   }
+  .view-tabs { display: flex; gap: 6px; margin-top: 18px; border-bottom: 1px solid var(--border); }
+  .view-tab {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-weight: 500;
+    font-size: 13.5px;
+    background: transparent;
+    color: var(--text-muted);
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 8px 4px 10px;
+    margin-bottom: -1px;
+    cursor: pointer;
+  }
+  .view-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .budget-table-wrap { margin-top: 16px; overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow); }
+  .budget-table { width: 100%; border-collapse: collapse; font-size: 13px; white-space: nowrap; }
+  .budget-table th, .budget-table td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+  .budget-table th { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 500; }
+  .budget-table .num-col { text-align: right; font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  .budget-table tbody tr.budget-row { cursor: pointer; }
+  .budget-table tbody tr.budget-row:hover { background: var(--surface-2); }
+  .budget-table .flag-count { font-weight: 500; }
+  .budget-table .flag-count.zero { color: var(--text-muted); font-weight: 400; }
+  .budget-table .flag-count.over { color: var(--critical); }
+  .budget-table .flag-count.missing { color: var(--warning); }
+  .budget-table .flag-count.unbudgeted { color: var(--nobudget); }
+  .budget-table .flag-line-count { color: var(--text-muted); font-size: 11.5px; }
+  .budget-detail-row td { background: var(--bg); white-space: normal; }
+  .budget-detail-groups { display: flex; flex-wrap: wrap; gap: 18px; padding: 4px 0; }
+  .budget-detail-group h4 { margin: 0 0 6px; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+  .budget-detail-group ul { margin: 0; padding: 0; list-style: none; font-size: 12.5px; }
+  .budget-detail-group li { padding: 2px 0; white-space: nowrap; }
+  .budget-detail-group .code { font-family: "IBM Plex Mono", ui-monospace, monospace; color: var(--text-muted); margin-right: 6px; }
   .stage-pill {
     display: inline-block;
     font-family: "IBM Plex Mono", monospace;
@@ -736,6 +769,12 @@
   <h1>Stage Release Queue</h1>
   <p class="subtitle">Every house past permit, tracked through its <b>F → L → O → Q</b> release milestones — dates ported from house-release-tracker, checklist from <b>CHECKLIST V2.xlsx</b>. Spec homes stop at O; any other buyer (a real name, or Model) needs a Q (custom options) release. Check off, edit, comment on, or remove any line as it's reviewed.</p>
 
+  <div class="view-tabs">
+    <button class="view-tab active" data-view="release" type="button">Release Tracker</button>
+    <button class="view-tab" data-view="budget" type="button">Budget vs Actual</button>
+  </div>
+
+  <div id="viewRelease">
   <div class="summary-row">
     <div class="summary-tile tone-critical">
       <div class="num" id="sumOverdue">–</div>
@@ -840,6 +879,64 @@
   <p class="sync-note">Changes sync live to everyone with this link — no sign-in needed. Just a browser tab, like the permit tracker.</p>
 
   <footer class="note">Houses and stage dates sourced from house-release-tracker. Checklist line items sourced from CHECKLIST V2.xlsx (Stage Z / F / O / L cost codes) — the same template is applied to every house; the section matching its current release stage opens by default. Edit or remove any line that doesn't apply, or add a custom one at the bottom of a stage.</footer>
+  </div>
+
+  <div id="viewBudget" style="display:none">
+    <div class="summary-row">
+      <div class="summary-tile tone-critical">
+        <div class="num" id="bSumOverAmt">–</div>
+        <div class="label">Total over budget</div>
+      </div>
+      <div class="summary-tile tone-critical">
+        <div class="num" id="bSumOverHouses">–</div>
+        <div class="label">Houses over budget</div>
+      </div>
+      <div class="summary-tile tone-warning">
+        <div class="num" id="bSumMissingLines">–</div>
+        <div class="label">Cost codes missing actual</div>
+      </div>
+      <div class="summary-tile tone-nobudget">
+        <div class="num" id="bSumUnbudgetedAmt">–</div>
+        <div class="label">Unbudgeted spend</div>
+      </div>
+    </div>
+
+    <p class="subtitle" style="margin-top:14px">Per house, compared against the accounting system's own budget and actual, cost code by cost code. <b>Over budget</b> = actual has exceeded budget on a line. <b>Missing actual</b> = budgeted but nothing recorded as spent yet (normal if that phase hasn't happened; worth a look if it should have). <b>No budget</b> = money's been spent on a cost code that was never budgeted — the clearest early warning that a house's margin is eroding.</p>
+
+    <div class="filter-bar">
+      <input type="text" id="bSearch" placeholder="Search address, lot, PM…">
+      <select id="bDev"><option value="">All communities</option></select>
+      <select id="bComp"><option value="">All companies</option></select>
+      <select id="bFlag">
+        <option value="">All houses</option>
+        <option value="over">Over budget</option>
+        <option value="missing">Missing actual</option>
+        <option value="unbudgeted">Actual, no budget</option>
+      </select>
+      <select id="bSort">
+        <option value="over">Sort: Most over budget first</option>
+        <option value="unbudgeted">Sort: Unbudgeted spend, high→low</option>
+        <option value="address">Sort: Address A→Z</option>
+        <option value="company">Sort: Company</option>
+        <option value="community">Sort: Community</option>
+      </select>
+      <span class="filter-count" id="bFilterCount"></span>
+    </div>
+
+    <div class="budget-table-wrap">
+      <table class="budget-table" id="budgetTable">
+        <thead>
+          <tr>
+            <th>Address</th><th>Company</th><th>Community</th><th>Stage</th>
+            <th class="num-col">Budget</th><th class="num-col">Actual</th>
+            <th class="num-col">Over Budget</th><th class="num-col">Missing Actual</th><th class="num-col">No Budget</th>
+          </tr>
+        </thead>
+        <tbody id="budgetTableBody"></tbody>
+      </table>
+    </div>
+    <p class="sync-note">Budget and actual figures come straight from the accounting system's own API, refreshed every 5 minutes.</p>
+  </div>
 </div>
 
 <script>
@@ -1837,6 +1934,13 @@
       var idx = {};
       var totals = {};
       rows.forEach(function (row) {
+        // "ibn" rows (e.g. desccost "Relief", "Conversion") are the accounting system's own
+        // internal consolidation/offset entries -- never budgeted by design, and their "actual"
+        // is a rolled-up or contra figure, not itemized spend (confirmed against real rows:
+        // large negative "Relief" contras and a house-wide "Conversion" total, not per-code
+        // costs). Keeping them out of budgetIndex is what makes cost-code-level comparisons
+        // meaningful instead of swamped by a handful of huge, sometimes negative, roll-ups.
+        if (row.ibn === "Yes") return;
         var lot = row.housenumber;
         var code = row.categorycode + "-" + row.costcode;
         var budget = (row.budgetamount === null || row.budgetamount === undefined) ? null : parseFloat(row.budgetamount);
@@ -1844,7 +1948,7 @@
         if (budget !== null && isNaN(budget)) budget = null;
         if (actual !== null && isNaN(actual)) actual = null;
         if (!idx[lot]) idx[lot] = {};
-        idx[lot][code] = { budget: budget, actual: actual };
+        idx[lot][code] = { budget: budget, actual: actual, label: row.desccost || row.desccat || "" };
         if (budget !== null) totals[lot] = (totals[lot] || 0) + budget;
       });
       // Houses released here carry the permit's own row id, not the accounting system's house
@@ -1866,6 +1970,7 @@
       renderSummary();
       if (typeof renderAlertsPanel === "function") renderAlertsPanel();
       if (typeof renderBatchWorklist === "function") renderBatchWorklist();
+      if (typeof renderBudgetView === "function") renderBudgetView();
     }).catch(function (err) {
       console.warn("Budget API load failed:", err);
     });
@@ -2217,6 +2322,192 @@
       list.appendChild(row);
     });
   }
+
+  // ---- Budget vs Actual view: per-house cost-code comparison against the accounting
+  // system's own budget/actual, to see construction cost health -- overruns, spending
+  // that hasn't shown up yet, and spend nobody budgeted for -- while a house is still
+  // being built, before it's priced for sale ----
+  var elBSearch = document.getElementById("bSearch");
+  var elBDev = document.getElementById("bDev");
+  var elBComp = document.getElementById("bComp");
+  var elBFlag = document.getElementById("bFlag");
+  var elBSort = document.getElementById("bSort");
+  var budgetDetailOpen = {}; // lot -> bool, preserved across re-renders
+
+  function computeHouseBudgetAnalysis(h) {
+    var idx = budgetIndex[h.id] || {};
+    var totalBudget = 0, totalActual = 0;
+    var overLines = [], missingLines = [], unbudgetedLines = [];
+    Object.keys(idx).forEach(function (code) {
+      var info = idx[code];
+      var b = info.budget, a = info.actual;
+      if (b !== null) totalBudget += b;
+      if (a !== null) totalActual += a;
+      if (b !== null && a !== null && (a - b) > 0.01) overLines.push({ code: code, label: info.label, budget: b, actual: a, diff: a - b });
+      else if (b !== null && a === null) missingLines.push({ code: code, label: info.label, budget: b });
+      else if (b === null && a !== null) unbudgetedLines.push({ code: code, label: info.label, actual: a });
+    });
+    var overAmount = overLines.reduce(function (s, l) { return s + l.diff; }, 0);
+    var missingAmount = missingLines.reduce(function (s, l) { return s + l.budget; }, 0);
+    var unbudgetedAmount = unbudgetedLines.reduce(function (s, l) { return s + l.actual; }, 0);
+    return {
+      h: h, totalBudget: totalBudget, totalActual: totalActual,
+      overLines: overLines, missingLines: missingLines, unbudgetedLines: unbudgetedLines,
+      overAmount: overAmount, missingAmount: missingAmount, unbudgetedAmount: unbudgetedAmount, hasBudgetData: Object.keys(idx).length > 0
+    };
+  }
+
+  function budgetAnalysisMatchesFilters(a, f) {
+    var h = a.h;
+    if (f.q) {
+      var hay = (h.address + " " + h.id + " " + (h.pm || "") + " " + (h.lotNumber || "")).toLowerCase();
+      if (hay.indexOf(f.q) === -1) return false;
+    }
+    if (f.dev && h.dev !== f.dev) return false;
+    if (f.comp && h.comp !== f.comp) return false;
+    if (f.flag === "over" && !a.overLines.length) return false;
+    if (f.flag === "missing" && !a.missingLines.length) return false;
+    if (f.flag === "unbudgeted" && !a.unbudgetedLines.length) return false;
+    return true;
+  }
+
+  function budgetSortComparator(mode) {
+    if (mode === "unbudgeted") return function (a, b) { return b.unbudgetedAmount - a.unbudgetedAmount; };
+    if (mode === "address") return function (a, b) { return a.h.address.localeCompare(b.h.address); };
+    if (mode === "company") return function (a, b) { return (a.h.comp || "").localeCompare(b.h.comp || ""); };
+    if (mode === "community") return function (a, b) { return (DEV_NAMES[a.h.dev] || a.h.dev || "").localeCompare(DEV_NAMES[b.h.dev] || b.h.dev || ""); };
+    return function (a, b) { return b.overAmount - a.overAmount; }; // default: "over"
+  }
+
+  function budgetDetailHtml(a) {
+    function group(title, lines, fmt) {
+      if (!lines.length) return "";
+      return '<div class="budget-detail-group"><h4>' + title + " (" + lines.length + ")</h4><ul>" +
+        lines.map(function (l) { return '<li><span class="code">' + escapeHtml(l.code) + "</span>" + escapeHtml(l.label || "") + " — " + fmt(l) + "</li>"; }).join("") +
+        "</ul></div>";
+    }
+    if (!a.overLines.length && !a.missingLines.length && !a.unbudgetedLines.length) {
+      return '<div class="budget-detail-groups"><span style="color:var(--text-muted)">Every cost code lines up with accounting — nothing flagged.</span></div>';
+    }
+    return '<div class="budget-detail-groups">' +
+      group("Over Budget", a.overLines, function (l) { return fmtAmount(l.budget) + " → " + fmtAmount(l.actual) + " (+" + fmtAmount(l.diff) + ")"; }) +
+      group("Missing Actual", a.missingLines, function (l) { return "Budget " + fmtAmount(l.budget); }) +
+      group("Actual, No Budget", a.unbudgetedLines, function (l) { return "Actual " + fmtAmount(l.actual); }) +
+      "</div>";
+  }
+
+  function ensureBudgetFilterOptions(analyses) {
+    var devs = {}, comps = {};
+    analyses.forEach(function (a) { if (a.h.dev) devs[a.h.dev] = true; if (a.h.comp) comps[a.h.comp] = true; });
+    var curDev = elBDev.value, curComp = elBComp.value;
+    Array.prototype.slice.call(elBDev.options).forEach(function (o) { if (o.value && !devs[o.value]) o.remove(); });
+    Object.keys(devs).sort().forEach(function (code) {
+      if (!elBDev.querySelector('option[value="' + code + '"]')) {
+        var opt = document.createElement("option");
+        opt.value = code; opt.textContent = DEV_NAMES[code] || code;
+        elBDev.appendChild(opt);
+      }
+    });
+    Array.prototype.slice.call(elBComp.options).forEach(function (o) { if (o.value && !comps[o.value]) o.remove(); });
+    Object.keys(comps).sort().forEach(function (code) {
+      if (!elBComp.querySelector('option[value="' + code + '"]')) {
+        var opt = document.createElement("option");
+        opt.value = code; opt.textContent = "Comp " + code + (companyNames[code] ? " (" + companyNames[code] + ")" : "");
+        elBComp.appendChild(opt);
+      }
+    });
+    elBDev.value = curDev; elBComp.value = curComp;
+  }
+
+  function renderBudgetView() {
+    var body = document.getElementById("budgetTableBody");
+    if (!body) return;
+    if (!budgetDataLoaded) {
+      body.innerHTML = '<tr><td colspan="9" style="color:var(--text-muted)">Loading budget data…</td></tr>';
+      return;
+    }
+    var allAnalyses = HOUSES.map(computeHouseBudgetAnalysis)
+      .filter(function (a) { return a.hasBudgetData; });
+    ensureBudgetFilterOptions(allAnalyses);
+
+    var filters = {
+      q: elBSearch.value.trim().toLowerCase(),
+      dev: elBDev.value,
+      comp: elBComp.value,
+      flag: elBFlag.value
+    };
+    var filtered = allAnalyses.filter(function (a) { return budgetAnalysisMatchesFilters(a, filters); })
+      .sort(budgetSortComparator(elBSort.value));
+
+    // Summary tiles reflect the whole portfolio, not just the current filter -- the point
+    // is to see overall cost health at a glance, then filter down to investigate.
+    var overHouses = allAnalyses.filter(function (a) { return a.overLines.length > 0; });
+    var totalOverAmt = overHouses.reduce(function (s, a) { return s + a.overAmount; }, 0);
+    var totalMissingLines = allAnalyses.reduce(function (s, a) { return s + a.missingLines.length; }, 0);
+    var totalUnbudgetedAmt = allAnalyses.reduce(function (s, a) { return s + a.unbudgetedAmount; }, 0);
+    document.getElementById("bSumOverAmt").textContent = fmtAmount(totalOverAmt) || "$0.00";
+    document.getElementById("bSumOverHouses").textContent = overHouses.length;
+    document.getElementById("bSumMissingLines").textContent = totalMissingLines;
+    document.getElementById("bSumUnbudgetedAmt").textContent = fmtAmount(totalUnbudgetedAmt) || "$0.00";
+
+    document.getElementById("bFilterCount").textContent = filtered.length + " / " + allAnalyses.length + " houses";
+
+    body.innerHTML = "";
+    if (!filtered.length) {
+      body.innerHTML = '<tr><td colspan="9" style="color:var(--text-muted)">No houses match the current filters.</td></tr>';
+      return;
+    }
+    function flagCell(amount, count, cls) {
+      if (!count) return '<span class="flag-count zero">—</span>';
+      return '<span class="flag-count ' + cls + '">' + fmtAmount(amount) + '</span> <span class="flag-line-count">(' + count + ")</span>";
+    }
+    filtered.forEach(function (a) {
+      var h = a.h;
+      var tr = document.createElement("tr");
+      tr.className = "budget-row";
+      tr.dataset.lot = h.id;
+      tr.innerHTML =
+        "<td>" + escapeHtml(h.address) + "</td>" +
+        "<td>" + escapeHtml(h.comp || "—") + "</td>" +
+        "<td>" + escapeHtml(DEV_NAMES[h.dev] || h.dev || "") + "</td>" +
+        "<td>" + escapeHtml(h.stage) + "</td>" +
+        '<td class="num-col">' + fmtAmount(a.totalBudget) + "</td>" +
+        '<td class="num-col">' + fmtAmount(a.totalActual) + "</td>" +
+        '<td class="num-col">' + flagCell(a.overAmount, a.overLines.length, "over") + "</td>" +
+        '<td class="num-col">' + flagCell(a.missingAmount, a.missingLines.length, "missing") + "</td>" +
+        '<td class="num-col">' + flagCell(a.unbudgetedAmount, a.unbudgetedLines.length, "unbudgeted") + "</td>";
+      tr.addEventListener("click", function () {
+        budgetDetailOpen[h.id] = !budgetDetailOpen[h.id];
+        renderBudgetView();
+      });
+      body.appendChild(tr);
+      if (budgetDetailOpen[h.id]) {
+        var detailTr = document.createElement("tr");
+        detailTr.className = "budget-detail-row";
+        detailTr.innerHTML = '<td colspan="9">' + budgetDetailHtml(a) + "</td>";
+        body.appendChild(detailTr);
+      }
+    });
+  }
+
+  [elBSearch, elBDev, elBComp, elBFlag, elBSort].forEach(function (el) {
+    el.addEventListener("input", renderBudgetView);
+    el.addEventListener("change", renderBudgetView);
+  });
+
+  // ---- View tab switching (Release Tracker <-> Budget vs Actual) ----
+  var viewReleaseEl = document.getElementById("viewRelease");
+  var viewBudgetEl = document.getElementById("viewBudget");
+  Array.prototype.forEach.call(document.querySelectorAll(".view-tab"), function (btn) {
+    btn.addEventListener("click", function () {
+      Array.prototype.forEach.call(document.querySelectorAll(".view-tab"), function (b) { b.classList.remove("active"); });
+      btn.classList.add("active");
+      var view = btn.dataset.view;
+      viewReleaseEl.style.display = view === "release" ? "" : "none";
+      viewBudgetEl.style.display = view === "budget" ? "" : "none";
+      if (view === "budget") renderBudgetView();
+    });
+  });
 
   renderAlertsPanel();
   renderBatchWorklist();
