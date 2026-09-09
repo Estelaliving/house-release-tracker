@@ -1021,16 +1021,14 @@
     return '<span class="item-budget-info' + (variance ? " variance" : "") + '">' + parts.join(" · ") + '</span>';
   }
 
-  function buildHouseCard(h) {
-    var card = document.createElement("div");
-    card.className = "house";
-    card.dataset.lot = h.id;
-
+  // Shared by buildHouseCard() (first render) and refreshHouseHead() (a newer meta arrives
+  // for a house that's already on screen -- e.g. a corrected company code) so both stay
+  // in sync with a single source of truth for what the head shows.
+  function houseHeadInnerHtml(h) {
     var today = todayMidnight();
     var ev = evaluateHouse(h, today);
     var badge = statusBadge(ev.status, ev.daysToDue);
     var buyerLabel = h.buyer === "SPEC" ? "Spec" : (h.buyer === "MODEL" ? "Model" : h.buyer);
-    defaultOpenSectionByLot[h.id] = STAGE_SECTION_MAP[h.stage] || null;
 
     var dateLine = "";
     if (ev.transition) {
@@ -1041,26 +1039,40 @@
       dateLine = "Awaiting buyer custom-options sign-off";
     }
 
-    card.innerHTML =
-      '<div class="house-head">' +
-        '<div>' +
-          '<div class="house-id">' + escapeHtml(h.id) + ' &middot; Comp ' + escapeHtml(h.comp || "—") + (h.companyName ? " (" + escapeHtml(h.companyName) + ")" : "") + '</div>' +
-          '<div class="house-address">' + escapeHtml(h.address) + '</div>' +
-          '<div class="house-meta">' +
-            '<span>' + escapeHtml(DEV_NAMES[h.dev] || h.dev) + '</span>' +
-            '<span>' + escapeHtml(h.model) + (h.elevCode ? '/' + escapeHtml(h.elevCode) : '') + '</span>' +
-            '<span>PM ' + escapeHtml(h.pm || "—") + '</span>' +
-            '<span class="buyer-tag">' + escapeHtml(buyerLabel) + '</span>' +
-          '</div>' +
-        '</div>' +
-        '<div class="eta-badge">' +
-          '<span class="stage-pill">Stage ' + h.stage + ' — ' + escapeHtml(STAGE_NAMES[h.stage] || "") + '</span>' +
-          '<span class="eta-pill ' + badge.cls + '">' + badge.text + '</span>' +
-          (dateLine ? '<span class="eta-date">' + escapeHtml(dateLine) + '</span>' : '') +
-          '<span class="house-progress" data-role="house-progress"></span>' +
-          '<span class="nobudget-badge" data-role="nobudget-badge" style="display:none">No Budget</span>' +
+    return '<div>' +
+        '<div class="house-id">' + escapeHtml(h.id) + ' &middot; Comp ' + escapeHtml(h.comp || "—") + (h.companyName ? " (" + escapeHtml(h.companyName) + ")" : "") + '</div>' +
+        '<div class="house-address">' + escapeHtml(h.address) + '</div>' +
+        '<div class="house-meta">' +
+          '<span>' + escapeHtml(DEV_NAMES[h.dev] || h.dev) + '</span>' +
+          '<span>' + escapeHtml(h.model) + (h.elevCode ? '/' + escapeHtml(h.elevCode) : '') + '</span>' +
+          '<span>PM ' + escapeHtml(h.pm || "—") + '</span>' +
+          '<span class="buyer-tag">' + escapeHtml(buyerLabel) + '</span>' +
         '</div>' +
       '</div>' +
+      '<div class="eta-badge">' +
+        '<span class="stage-pill">Stage ' + h.stage + ' — ' + escapeHtml(STAGE_NAMES[h.stage] || "") + '</span>' +
+        '<span class="eta-pill ' + badge.cls + '">' + badge.text + '</span>' +
+        (dateLine ? '<span class="eta-date">' + escapeHtml(dateLine) + '</span>' : '') +
+        '<span class="house-progress" data-role="house-progress"></span>' +
+        '<span class="nobudget-badge" data-role="nobudget-badge" style="display:none">No Budget</span>' +
+      '</div>';
+  }
+
+  function refreshHouseHead(lot, h) {
+    var card = queueEl.querySelector('.house[data-lot="' + lot + '"]');
+    if (!card) return;
+    var headEl = card.querySelector(".house-head");
+    if (headEl) headEl.innerHTML = houseHeadInnerHtml(h);
+  }
+
+  function buildHouseCard(h) {
+    var card = document.createElement("div");
+    card.className = "house";
+    card.dataset.lot = h.id;
+    defaultOpenSectionByLot[h.id] = STAGE_SECTION_MAP[h.stage] || null;
+
+    card.innerHTML =
+      '<div class="house-head">' + houseHeadInnerHtml(h) + '</div>' +
       '<div class="cost-search-row"><input type="text" placeholder="Search cost code or description…" data-role="cost-search"></div>' +
       '<div class="checklist-section" data-role="checklist"></div>';
     card.querySelector('[data-role="cost-search"]').addEventListener("input", function (e) {
@@ -1709,12 +1721,20 @@
 
       // A house released here at runtime by another viewer arrives with its metadata
       // attached (see persist()) -- materialize it into HOUSES and give it a real card
-      // the first time this page hears about it.
-      if (incoming.meta && !HOUSES.some(function (h) { return h.id === lot; })) {
-        var newHouse = Object.assign({ id: lot }, incoming.meta);
-        HOUSES.push(newHouse);
-        if (typeof ensureDevFilterOption === "function") ensureDevFilterOption(newHouse.dev);
-        if (typeof addHouseCard === "function" && !queueEl.querySelector('.house[data-lot="' + lot + '"]')) addHouseCard(newHouse);
+      // the first time this page hears about it. If it's already on screen, a newer _ts
+      // means something about it changed (e.g. a corrected company code) -- merge that in
+      // too, rather than only ever using whatever meta happened to be there at first sight.
+      if (incoming.meta) {
+        var existingHouse = HOUSES.filter(function (h) { return h.id === lot; })[0];
+        if (!existingHouse) {
+          var newHouse = Object.assign({ id: lot }, incoming.meta);
+          HOUSES.push(newHouse);
+          if (typeof ensureDevFilterOption === "function") ensureDevFilterOption(newHouse.dev);
+          if (typeof addHouseCard === "function" && !queueEl.querySelector('.house[data-lot="' + lot + '"]')) addHouseCard(newHouse);
+        } else {
+          Object.assign(existingHouse, incoming.meta);
+          if (typeof refreshHouseHead === "function") refreshHouseHead(lot, existingHouse);
+        }
       }
 
       var prevOpen = {};
