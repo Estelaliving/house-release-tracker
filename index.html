@@ -1969,13 +1969,16 @@
       var idx = {};
       var totals = {};
       rows.forEach(function (row) {
-        // "ibn" rows (e.g. desccost "Relief", "Conversion") are the accounting system's own
-        // internal consolidation/offset entries -- never budgeted by design, and their "actual"
-        // is a rolled-up or contra figure, not itemized spend (confirmed against real rows:
-        // large negative "Relief" contras and a house-wide "Conversion" total, not per-code
-        // costs). Keeping them out of budgetIndex is what makes cost-code-level comparisons
-        // meaningful instead of swamped by a handful of huge, sometimes negative, roll-ups.
-        if (row.ibn === "Yes") return;
+        // "ibn" is NOT a "never a real cost" flag -- it's set on ~4,900 rows covering
+        // permits, closing costs, property tax, customer options, and (importantly) the
+        // 61-75 variance reason codes (Site Condition, Weather, Sub Error, etc.) -- all real,
+        // itemized costs that belong in this analysis. Only "01-Conversion" and "99-Relief"
+        // are genuine accounting roll-up/offset constructs (confirmed: their magnitude comes
+        // from being a whole-house lump total or its contra, not a per-cost-code amount --
+        // e.g. Conversion averaging ~$108k, Relief averaging -$97k, vs. real cost codes like
+        // Site Condition averaging ~$900). Excluding only those two, not the whole ibn flag.
+        if (row.costcode === "01" && row.desccost === "Conversion") return;
+        if (row.costcode === "99" && row.desccost === "Relief") return;
         var lot = row.housenumber;
         var code = row.categorycode + "-" + row.costcode;
         var budget = (row.budgetamount === null || row.budgetamount === undefined) ? null : parseFloat(row.budgetamount);
