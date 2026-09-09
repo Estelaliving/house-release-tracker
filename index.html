@@ -762,9 +762,20 @@
 
   .all-codes-section { padding: 4px 20px 18px; border-top: 1px solid var(--border); }
   .all-codes-section h4 { margin: 12px 0 8px; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
-  .line-filter-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin-bottom: 10px; font-size: 12.5px; }
+  .line-filter-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-bottom: 10px; font-size: 12.5px; }
   .line-filter-label { color: var(--text-muted); }
   .line-filter-bar label { display: flex; align-items: center; gap: 5px; cursor: pointer; white-space: nowrap; }
+  .line-search, .line-sort {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-size: 12.5px;
+    padding: 6px 9px;
+    border-radius: 7px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+  }
+  .line-search { flex: 1; min-width: 180px; }
+  .line-search::placeholder { color: var(--text-muted); }
   .all-codes-wrap { max-height: 420px; overflow-y: auto; overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
   .all-codes-table { width: 100%; border-collapse: collapse; font-size: 12.5px; white-space: nowrap; }
   .all-codes-table th, .all-codes-table td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--border); }
@@ -2456,7 +2467,13 @@
 
     var allRowsHtml = a.allLines.map(function (l) {
       var badges = l.flags.map(function (f) { return FLAG_BADGE[f]; }).join(" ");
-      return "<tr" + (l.flags.length ? "" : ' class="clean"') + ' data-flags="' + l.flags.join(" ") + '">' +
+      var searchHay = ((l.code || "") + " " + (l.category || "") + " " + (l.label || "")).toLowerCase();
+      return "<tr" + (l.flags.length ? "" : ' class="clean"') +
+        ' data-flags="' + l.flags.join(" ") + '"' +
+        ' data-search="' + escapeHtml(searchHay) + '"' +
+        ' data-code="' + escapeHtml(l.code) + '"' +
+        ' data-budget="' + (l.budget !== null ? l.budget : "") + '"' +
+        ' data-actual="' + (l.actual !== null ? l.actual : "") + '">' +
         "<td>" + escapeHtml(l.code) + "</td>" +
         "<td>" + escapeHtml(l.category || "") + "</td>" +
         "<td>" + escapeHtml(l.label || "") + "</td>" +
@@ -2466,6 +2483,14 @@
       "</tr>";
     }).join("");
     var lineFilterHtml =
+      '<div class="line-filter-bar">' +
+        '<input type="text" class="line-search" placeholder="Search cost code, category, description…">' +
+        '<select class="line-sort">' +
+          '<option value="code">Sort: Cost code A→Z</option>' +
+          '<option value="budget">Sort: Budget, high→low</option>' +
+          '<option value="actual">Sort: Actual, high→low</option>' +
+        "</select>" +
+      "</div>" +
       '<div class="line-filter-bar">' +
         '<span class="line-filter-label">Show only:</span>' +
         '<label><input type="checkbox" data-line-flag="over"> Over Budget (' + a.overLines.length + ")</label>" +
@@ -2609,18 +2634,36 @@
   // touching any other house's card or re-running the outer filter/sort.
   function wireLineFilter(card) {
     var checkboxes = card.querySelectorAll(".line-filter-bar input[type=\"checkbox\"]");
+    var searchInput = card.querySelector(".line-search");
+    var sortSelect = card.querySelector(".line-sort");
+    var tbody = card.querySelector(".all-codes-table tbody");
+    if (!checkboxes.length || !tbody) return;
     var rows = card.querySelectorAll(".all-codes-table tbody tr");
-    if (!checkboxes.length) return;
-    function apply() {
+
+    function applyFilter() {
       var active = Array.prototype.filter.call(checkboxes, function (cb) { return cb.checked; })
         .map(function (cb) { return cb.dataset.lineFlag; });
+      var q = (searchInput.value || "").trim().toLowerCase();
       rows.forEach(function (row) {
-        if (!active.length) { row.style.display = ""; return; }
-        var rowFlags = (row.dataset.flags || "").split(" ");
-        row.style.display = active.some(function (f) { return rowFlags.indexOf(f) !== -1; }) ? "" : "none";
+        var matchesFlag = !active.length || active.some(function (f) { return (row.dataset.flags || "").split(" ").indexOf(f) !== -1; });
+        var matchesSearch = !q || (row.dataset.search || "").indexOf(q) !== -1;
+        row.style.display = (matchesFlag && matchesSearch) ? "" : "none";
       });
     }
-    Array.prototype.forEach.call(checkboxes, function (cb) { cb.addEventListener("change", apply); });
+
+    function applySort() {
+      var mode = sortSelect.value;
+      var sorted = Array.prototype.slice.call(rows).sort(function (r1, r2) {
+        if (mode === "budget") return (parseFloat(r2.dataset.budget) || -Infinity) - (parseFloat(r1.dataset.budget) || -Infinity);
+        if (mode === "actual") return (parseFloat(r2.dataset.actual) || -Infinity) - (parseFloat(r1.dataset.actual) || -Infinity);
+        return (r1.dataset.code || "").localeCompare(r2.dataset.code || "");
+      });
+      sorted.forEach(function (row) { tbody.appendChild(row); });
+    }
+
+    Array.prototype.forEach.call(checkboxes, function (cb) { cb.addEventListener("change", applyFilter); });
+    searchInput.addEventListener("input", applyFilter);
+    sortSelect.addEventListener("change", applySort);
   }
 
   [elBSearch, elBDev, elBComp, elBCategory, elBFlag, elBMinVariance, elBSort].forEach(function (el) {
