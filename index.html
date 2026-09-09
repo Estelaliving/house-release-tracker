@@ -762,6 +762,9 @@
 
   .all-codes-section { padding: 4px 20px 18px; border-top: 1px solid var(--border); }
   .all-codes-section h4 { margin: 12px 0 8px; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+  .line-filter-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin-bottom: 10px; font-size: 12.5px; }
+  .line-filter-label { color: var(--text-muted); }
+  .line-filter-bar label { display: flex; align-items: center; gap: 5px; cursor: pointer; white-space: nowrap; }
   .all-codes-wrap { max-height: 420px; overflow-y: auto; overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
   .all-codes-table { width: 100%; border-collapse: collapse; font-size: 12.5px; white-space: nowrap; }
   .all-codes-table th, .all-codes-table td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--border); }
@@ -2453,7 +2456,7 @@
 
     var allRowsHtml = a.allLines.map(function (l) {
       var badges = l.flags.map(function (f) { return FLAG_BADGE[f]; }).join(" ");
-      return "<tr" + (l.flags.length ? "" : ' class="clean"') + ">" +
+      return "<tr" + (l.flags.length ? "" : ' class="clean"') + ' data-flags="' + l.flags.join(" ") + '">' +
         "<td>" + escapeHtml(l.code) + "</td>" +
         "<td>" + escapeHtml(l.category || "") + "</td>" +
         "<td>" + escapeHtml(l.label || "") + "</td>" +
@@ -2462,9 +2465,18 @@
         "<td>" + (badges || "") + "</td>" +
       "</tr>";
     }).join("");
+    var lineFilterHtml =
+      '<div class="line-filter-bar">' +
+        '<span class="line-filter-label">Show only:</span>' +
+        '<label><input type="checkbox" data-line-flag="over"> Over Budget (' + a.overLines.length + ")</label>" +
+        '<label><input type="checkbox" data-line-flag="unbudgeted"> No Budget (' + a.unbudgetedLines.length + ")</label>" +
+        '<label><input type="checkbox" data-line-flag="missing"> Missing Actual (' + a.missingLines.length + ")</label>" +
+        '<label><input type="checkbox" data-line-flag="negative"> Negative Actual (' + a.negativeLines.length + ")</label>" +
+      "</div>";
     var allCodesHtml =
       '<div class="all-codes-section">' +
         "<h4>All Cost Codes (" + a.allLines.length + ")</h4>" +
+        lineFilterHtml +
         '<div class="all-codes-wrap"><table class="all-codes-table"><thead><tr>' +
           "<th>Code</th><th>Category</th><th>Description</th><th class=\"num-col\">Budget</th><th class=\"num-col\">Actual</th><th></th>" +
         "</tr></thead><tbody>" + allRowsHtml + "</tbody></table></div>" +
@@ -2587,8 +2599,28 @@
       card.querySelector(".bh-detail").addEventListener("toggle", function (e) {
         budgetDetailOpen[h.id] = e.target.open;
       });
+      wireLineFilter(card);
       container.appendChild(card);
     });
+  }
+
+  // Lets you narrow one house's own cost-code table to just the flag types you care about
+  // (Over Budget / No Budget / Missing Actual / Negative Actual, any combination) without
+  // touching any other house's card or re-running the outer filter/sort.
+  function wireLineFilter(card) {
+    var checkboxes = card.querySelectorAll(".line-filter-bar input[type=\"checkbox\"]");
+    var rows = card.querySelectorAll(".all-codes-table tbody tr");
+    if (!checkboxes.length) return;
+    function apply() {
+      var active = Array.prototype.filter.call(checkboxes, function (cb) { return cb.checked; })
+        .map(function (cb) { return cb.dataset.lineFlag; });
+      rows.forEach(function (row) {
+        if (!active.length) { row.style.display = ""; return; }
+        var rowFlags = (row.dataset.flags || "").split(" ");
+        row.style.display = active.some(function (f) { return rowFlags.indexOf(f) !== -1; }) ? "" : "none";
+      });
+    }
+    Array.prototype.forEach.call(checkboxes, function (cb) { cb.addEventListener("change", apply); });
   }
 
   [elBSearch, elBDev, elBComp, elBCategory, elBFlag, elBMinVariance, elBSort].forEach(function (el) {
