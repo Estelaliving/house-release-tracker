@@ -725,6 +725,7 @@
   .bh-address { font-size: 19px; font-weight: 600; letter-spacing: -0.01em; }
   .bh-meta { margin-top: 5px; font-size: 13px; color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 4px 10px; }
   .bh-meta span:not(:last-child)::after { content: "·"; margin-left: 10px; color: var(--border); }
+  .untracked-badge { color: var(--text-muted); font-style: italic; }
   .bh-totals { flex: none; text-align: right; white-space: nowrap; font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
   .bh-totals .bh-total-line { font-size: 13px; color: var(--text-muted); }
   .bh-totals .bh-total-line b { color: var(--text); font-weight: 500; }
@@ -1137,6 +1138,7 @@
   // house number then cost code ("015-01"). Populated by loadBudgetData().
   var budgetIndex = {};
   var houseBudgetTotals = {}; // lot -> summed budgetamount across its lines
+  var budgetHouseMeta = {}; // housenumber -> accounting's own address/dev/comp/model
   var budgetDataLoaded = false;
 
   function budgetInfoHtml(lot, item) {
@@ -1968,6 +1970,8 @@
     }).then(function (rows) {
       var idx = {};
       var totals = {};
+      var houseMeta = {}; // housenumber -> accounting's own address/dev/comp/model, for houses
+                           // that exist in accounting but were never released in this tool
       rows.forEach(function (row) {
         // "ibn" is NOT a "never a real cost" flag -- it's set on ~4,900 rows covering
         // permits, closing costs, property tax, customer options, and (importantly) the
@@ -1988,7 +1992,11 @@
         if (!idx[lot]) idx[lot] = {};
         idx[lot][code] = { budget: budget, actual: actual, label: row.desccost || row.desccat || "", category: row.desccat || "" };
         if (budget !== null) totals[lot] = (totals[lot] || 0) + budget;
+        if (!houseMeta[lot]) {
+          houseMeta[lot] = { address: row.address1 || lot, dev: row.developmentcode || "", comp: row.companycode || "", model: row.modelcode || "", elevCode: row.elevationcode || "" };
+        }
       });
+      budgetHouseMeta = houseMeta;
       // Houses released here carry the permit's own row id, not the accounting system's house
       // number -- alias the real accounting record onto that id so every lookup below (which
       // all key off h.id) still finds it, without having to touch each call site.
@@ -2550,6 +2558,26 @@
     elBDev.value = curDev; elBComp.value = curComp; elBCategory.value = curCategory;
   }
 
+  // Accounting has real budget/actual data for some houses that were never released in this
+  // tool (not yet permitted here, already sold and dropped off the active list, etc.) --
+  // those still belong in this analysis, just without a stage/PM/buyer since none exists.
+  function buildUntrackedHouseObjects() {
+    var covered = {};
+    HOUSES.forEach(function (h) {
+      covered[h.id] = true;
+      var hn = computeHousenumber(h.dev, h.lotNumber);
+      if (hn) covered[hn] = true;
+    });
+    return Object.keys(budgetHouseMeta).filter(function (hn) { return !covered[hn]; }).map(function (hn) {
+      var meta = budgetHouseMeta[hn];
+      return {
+        id: hn, address: meta.address, comp: meta.comp, companyName: companyNames[meta.comp] || "",
+        dev: meta.dev, model: meta.model, elevCode: meta.elevCode,
+        stage: null, pm: "", buyer: "", lotNumber: null, untracked: true
+      };
+    });
+  }
+
   function renderBudgetView() {
     var container = document.getElementById("budgetCards");
     if (!container) return;
@@ -2559,7 +2587,8 @@
     }
     var minVariance = parseFloat(elBMinVariance.value);
     if (isNaN(minVariance) || minVariance < 0) minVariance = 0;
-    var allAnalyses = HOUSES.map(function (h) { return computeHouseBudgetAnalysis(h, minVariance); })
+    var allHouseObjs = HOUSES.concat(buildUntrackedHouseObjects());
+    var allAnalyses = allHouseObjs.map(function (h) { return computeHouseBudgetAnalysis(h, minVariance); })
       .filter(function (a) { return a.hasBudgetData; });
     ensureBudgetFilterOptions(allAnalyses);
 
@@ -2606,7 +2635,7 @@
             '<div class="bh-meta">' +
               "<span>Comp " + escapeHtml(h.comp || "—") + (h.companyName ? " (" + escapeHtml(h.companyName) + ")" : "") + "</span>" +
               "<span>" + escapeHtml(DEV_NAMES[h.dev] || h.dev || "") + "</span>" +
-              "<span>Stage " + escapeHtml(h.stage) + "</span>" +
+              (h.stage ? "<span>Stage " + escapeHtml(h.stage) + "</span>" : '<span class="untracked-badge">Not in Release Tracker</span>') +
             "</div>" +
           "</div>" +
           '<div class="bh-totals">' +
