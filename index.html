@@ -684,7 +684,7 @@
     gap: 8px;
     align-items: center;
   }
-  .filter-bar input[type="text"], .filter-bar select {
+  .filter-bar input[type="text"], .filter-bar input[type="number"], .filter-bar select {
     font-family: "IBM Plex Sans", sans-serif;
     font-size: 13.5px;
     padding: 8px 10px;
@@ -694,6 +694,7 @@
     color: var(--text);
   }
   .filter-bar input[type="text"] { flex: 1; min-width: 160px; }
+  .filter-bar input[type="number"] { width: 120px; }
   .filter-count {
     font-size: 12.5px;
     color: var(--text-muted);
@@ -733,10 +734,20 @@
   .bh-flag .bh-flag-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
   .bh-flag .bh-flag-amt { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; font-size: 16px; font-weight: 500; margin-top: 2px; }
   .bh-flag.over .bh-flag-amt { color: var(--critical); }
-  .bh-flag.missing .bh-flag-amt { color: var(--warning); }
-  .bh-flag.unbudgeted .bh-flag-amt { color: var(--nobudget); }
+  .bh-flag.unbudgeted .bh-flag-amt { color: var(--warning); }
+  .bh-flag.missing .bh-flag-amt { color: var(--accent); }
+  .bh-flag.negative .bh-flag-amt { color: var(--nobudget); }
   .bh-flag.zero .bh-flag-amt { color: var(--text-muted); }
   .bh-flag .bh-flag-count { font-size: 11.5px; color: var(--text-muted); margin-left: 4px; }
+
+  .budget-legend { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 14px; padding: 10px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; font-size: 12.5px; color: var(--text-muted); }
+  .legend-item { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .legend-item b { color: var(--text); font-weight: 500; }
+  .legend-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .legend-dot.over { background: var(--critical); }
+  .legend-dot.unbudgeted { background: var(--warning); }
+  .legend-dot.missing { background: var(--accent); }
+  .legend-dot.negative { background: var(--nobudget); }
   .bh-detail { border-top: 1px solid var(--border); }
   .bh-detail summary { padding: 10px 20px; font-size: 12.5px; color: var(--accent); cursor: pointer; list-style: none; }
   .bh-detail summary::-webkit-details-marker { display: none; }
@@ -896,21 +907,32 @@
   </div>
 
   <div id="viewBudget" style="display:none">
-    <p class="subtitle">Every tracked house on its own, compared against the accounting system's own budget and actual, cost code by cost code. <b>Over budget</b> = actual has exceeded budget on a line. <b>Missing actual</b> = budgeted but nothing recorded as spent yet (normal if that phase hasn't happened; worth a look if it should have). <b>No budget</b> = money's been spent on a cost code that was never budgeted — the clearest early warning that a house's margin is eroding.</p>
+    <p class="subtitle">Every tracked house on its own, compared against the accounting system's own budget and actual, cost code by cost code.</p>
+
+    <div class="budget-legend">
+      <span class="legend-item"><span class="legend-dot over"></span><b>Over Budget</b> — actual exceeds budget</span>
+      <span class="legend-item"><span class="legend-dot unbudgeted"></span><b>Actual, No Budget</b> — actual recorded with no budget set</span>
+      <span class="legend-item"><span class="legend-dot missing"></span><b>Missing Actual</b> — budget set but no actual recorded yet</span>
+      <span class="legend-item"><span class="legend-dot negative"></span><b>Negative Actual</b> — actual is negative (possible credit/reversal)</span>
+    </div>
 
     <div class="filter-bar">
-      <input type="text" id="bSearch" placeholder="Search address, lot, PM…">
+      <input type="text" id="bSearch" placeholder="Search address, lot, PM, category, cost code…">
       <select id="bDev"><option value="">All communities</option></select>
       <select id="bComp"><option value="">All companies</option></select>
+      <select id="bCategory"><option value="">All categories</option></select>
       <select id="bFlag">
         <option value="">All houses</option>
         <option value="over">Over budget</option>
-        <option value="missing">Missing actual</option>
         <option value="unbudgeted">Actual, no budget</option>
+        <option value="missing">Missing actual</option>
+        <option value="negative">Negative actual</option>
       </select>
+      <input type="number" id="bMinVariance" placeholder="Min $ variance" min="0" step="1">
       <select id="bSort">
         <option value="over">Sort: Most over budget first</option>
         <option value="unbudgeted">Sort: Unbudgeted spend, high→low</option>
+        <option value="negative">Sort: Negative actual, high→low</option>
         <option value="address">Sort: Address A→Z</option>
         <option value="company">Sort: Company</option>
         <option value="community">Sort: Community</option>
@@ -1932,7 +1954,7 @@
         if (budget !== null && isNaN(budget)) budget = null;
         if (actual !== null && isNaN(actual)) actual = null;
         if (!idx[lot]) idx[lot] = {};
-        idx[lot][code] = { budget: budget, actual: actual, label: row.desccost || row.desccat || "" };
+        idx[lot][code] = { budget: budget, actual: actual, label: row.desccost || row.desccat || "", category: row.desccat || "" };
         if (budget !== null) totals[lot] = (totals[lot] || 0) + budget;
       });
       // Houses released here carry the permit's own row id, not the accounting system's house
@@ -2314,49 +2336,70 @@
   var elBSearch = document.getElementById("bSearch");
   var elBDev = document.getElementById("bDev");
   var elBComp = document.getElementById("bComp");
+  var elBCategory = document.getElementById("bCategory");
   var elBFlag = document.getElementById("bFlag");
+  var elBMinVariance = document.getElementById("bMinVariance");
   var elBSort = document.getElementById("bSort");
   var budgetDetailOpen = {}; // lot -> bool, preserved across re-renders
 
-  function computeHouseBudgetAnalysis(h) {
+  function computeHouseBudgetAnalysis(h, minVariance) {
+    minVariance = minVariance || 0;
     var idx = budgetIndex[h.id] || {};
     var totalBudget = 0, totalActual = 0;
-    var overLines = [], missingLines = [], unbudgetedLines = [];
+    var overLines = [], missingLines = [], unbudgetedLines = [], negativeLines = [];
     Object.keys(idx).forEach(function (code) {
       var info = idx[code];
       var b = info.budget, a = info.actual;
       if (b !== null) totalBudget += b;
       if (a !== null) totalActual += a;
-      if (b !== null && a !== null && (a - b) > 0.01) overLines.push({ code: code, label: info.label, budget: b, actual: a, diff: a - b });
-      else if (b !== null && a === null) missingLines.push({ code: code, label: info.label, budget: b });
-      else if (b === null && a !== null) unbudgetedLines.push({ code: code, label: info.label, actual: a });
+      var row = { code: code, label: info.label, category: info.category };
+      if (b !== null && a !== null && (a - b) > 0.01) {
+        if ((a - b) >= minVariance) overLines.push(Object.assign({}, row, { budget: b, actual: a, diff: a - b }));
+      } else if (b !== null && a === null) {
+        missingLines.push(Object.assign({}, row, { budget: b }));
+      } else if (b === null && a !== null) {
+        if (Math.abs(a) >= minVariance) unbudgetedLines.push(Object.assign({}, row, { actual: a }));
+      }
+      // Negative actual is an independent flag -- a line can be both "no budget" and
+      // "negative" at once (e.g. a credit posted against a cost code with no budget set).
+      if (a !== null && a < -0.01 && Math.abs(a) >= minVariance) negativeLines.push(Object.assign({}, row, { actual: a }));
     });
     var overAmount = overLines.reduce(function (s, l) { return s + l.diff; }, 0);
     var missingAmount = missingLines.reduce(function (s, l) { return s + l.budget; }, 0);
     var unbudgetedAmount = unbudgetedLines.reduce(function (s, l) { return s + l.actual; }, 0);
+    var negativeAmount = negativeLines.reduce(function (s, l) { return s + Math.abs(l.actual); }, 0);
     return {
       h: h, totalBudget: totalBudget, totalActual: totalActual,
-      overLines: overLines, missingLines: missingLines, unbudgetedLines: unbudgetedLines,
-      overAmount: overAmount, missingAmount: missingAmount, unbudgetedAmount: unbudgetedAmount, hasBudgetData: Object.keys(idx).length > 0
+      overLines: overLines, missingLines: missingLines, unbudgetedLines: unbudgetedLines, negativeLines: negativeLines,
+      overAmount: overAmount, missingAmount: missingAmount, unbudgetedAmount: unbudgetedAmount, negativeAmount: negativeAmount,
+      hasBudgetData: Object.keys(idx).length > 0
     };
   }
 
   function budgetAnalysisMatchesFilters(a, f) {
     var h = a.h;
+    var allLines = [].concat(a.overLines, a.missingLines, a.unbudgetedLines, a.negativeLines);
     if (f.q) {
       var hay = (h.address + " " + h.id + " " + (h.pm || "") + " " + (h.lotNumber || "")).toLowerCase();
-      if (hay.indexOf(f.q) === -1) return false;
+      var matchesHouse = hay.indexOf(f.q) !== -1;
+      var matchesLine = !matchesHouse && allLines.some(function (l) {
+        return ((l.code || "") + " " + (l.label || "") + " " + (l.category || "")).toLowerCase().indexOf(f.q) !== -1;
+      });
+      if (!matchesHouse && !matchesLine) return false;
     }
     if (f.dev && h.dev !== f.dev) return false;
     if (f.comp && h.comp !== f.comp) return false;
+    if (f.category && !allLines.some(function (l) { return l.category === f.category; })) return false;
     if (f.flag === "over" && !a.overLines.length) return false;
     if (f.flag === "missing" && !a.missingLines.length) return false;
     if (f.flag === "unbudgeted" && !a.unbudgetedLines.length) return false;
+    if (f.flag === "negative" && !a.negativeLines.length) return false;
     return true;
   }
 
   function budgetSortComparator(mode) {
     if (mode === "unbudgeted") return function (a, b) { return b.unbudgetedAmount - a.unbudgetedAmount; };
+    if (mode === "negative") return function (a, b) { return b.negativeAmount - a.negativeAmount; };
     if (mode === "address") return function (a, b) { return a.h.address.localeCompare(b.h.address); };
     if (mode === "company") return function (a, b) { return (a.h.comp || "").localeCompare(b.h.comp || ""); };
     if (mode === "community") return function (a, b) { return (DEV_NAMES[a.h.dev] || a.h.dev || "").localeCompare(DEV_NAMES[b.h.dev] || b.h.dev || ""); };
@@ -2370,20 +2413,27 @@
         lines.map(function (l) { return '<li><span class="code">' + escapeHtml(l.code) + "</span>" + escapeHtml(l.label || "") + " — " + fmt(l) + "</li>"; }).join("") +
         "</ul></div>";
     }
-    if (!a.overLines.length && !a.missingLines.length && !a.unbudgetedLines.length) {
+    if (!a.overLines.length && !a.missingLines.length && !a.unbudgetedLines.length && !a.negativeLines.length) {
       return '<div class="budget-detail-groups"><span style="color:var(--text-muted)">Every cost code lines up with accounting — nothing flagged.</span></div>';
     }
     return '<div class="budget-detail-groups">' +
       group("Over Budget", a.overLines, function (l) { return fmtAmount(l.budget) + " → " + fmtAmount(l.actual) + " (+" + fmtAmount(l.diff) + ")"; }) +
-      group("Missing Actual", a.missingLines, function (l) { return "Budget " + fmtAmount(l.budget); }) +
       group("Actual, No Budget", a.unbudgetedLines, function (l) { return "Actual " + fmtAmount(l.actual); }) +
+      group("Missing Actual", a.missingLines, function (l) { return "Budget " + fmtAmount(l.budget); }) +
+      group("Negative Actual", a.negativeLines, function (l) { return "Actual " + fmtAmount(l.actual); }) +
       "</div>";
   }
 
   function ensureBudgetFilterOptions(analyses) {
-    var devs = {}, comps = {};
-    analyses.forEach(function (a) { if (a.h.dev) devs[a.h.dev] = true; if (a.h.comp) comps[a.h.comp] = true; });
-    var curDev = elBDev.value, curComp = elBComp.value;
+    var devs = {}, comps = {}, categories = {};
+    analyses.forEach(function (a) {
+      if (a.h.dev) devs[a.h.dev] = true;
+      if (a.h.comp) comps[a.h.comp] = true;
+      [].concat(a.overLines, a.missingLines, a.unbudgetedLines, a.negativeLines).forEach(function (l) {
+        if (l.category) categories[l.category] = true;
+      });
+    });
+    var curDev = elBDev.value, curComp = elBComp.value, curCategory = elBCategory.value;
     Array.prototype.slice.call(elBDev.options).forEach(function (o) { if (o.value && !devs[o.value]) o.remove(); });
     Object.keys(devs).sort().forEach(function (code) {
       if (!elBDev.querySelector('option[value="' + code + '"]')) {
@@ -2400,7 +2450,15 @@
         elBComp.appendChild(opt);
       }
     });
-    elBDev.value = curDev; elBComp.value = curComp;
+    Array.prototype.slice.call(elBCategory.options).forEach(function (o) { if (o.value && !categories[o.value]) o.remove(); });
+    Object.keys(categories).sort().forEach(function (cat) {
+      if (!elBCategory.querySelector('option[value="' + CSS.escape(cat) + '"]')) {
+        var opt = document.createElement("option");
+        opt.value = cat; opt.textContent = cat;
+        elBCategory.appendChild(opt);
+      }
+    });
+    elBDev.value = curDev; elBComp.value = curComp; elBCategory.value = curCategory;
   }
 
   function renderBudgetView() {
@@ -2410,7 +2468,9 @@
       container.innerHTML = '<div class="alert-empty">Loading budget data…</div>';
       return;
     }
-    var allAnalyses = HOUSES.map(computeHouseBudgetAnalysis)
+    var minVariance = parseFloat(elBMinVariance.value);
+    if (isNaN(minVariance) || minVariance < 0) minVariance = 0;
+    var allAnalyses = HOUSES.map(function (h) { return computeHouseBudgetAnalysis(h, minVariance); })
       .filter(function (a) { return a.hasBudgetData; });
     ensureBudgetFilterOptions(allAnalyses);
 
@@ -2418,6 +2478,7 @@
       q: elBSearch.value.trim().toLowerCase(),
       dev: elBDev.value,
       comp: elBComp.value,
+      category: elBCategory.value,
       flag: elBFlag.value
     };
     var filtered = allAnalyses.filter(function (a) { return budgetAnalysisMatchesFilters(a, filters); })
@@ -2466,8 +2527,9 @@
         "</div>" +
         '<div class="bh-flags">' +
           flagBlock("Over Budget", a.overAmount, a.overLines.length, "over") +
+          flagBlock("Actual, No Budget", a.unbudgetedAmount, a.unbudgetedLines.length, "unbudgeted") +
           flagBlock("Missing Actual", a.missingAmount, a.missingLines.length, "missing") +
-          flagBlock("No Budget", a.unbudgetedAmount, a.unbudgetedLines.length, "unbudgeted") +
+          flagBlock("Negative Actual", a.negativeAmount, a.negativeLines.length, "negative") +
         "</div>" +
         '<details class="bh-detail"' + (budgetDetailOpen[h.id] ? " open" : "") + ">" +
           "<summary>Cost code detail</summary>" +
@@ -2480,7 +2542,7 @@
     });
   }
 
-  [elBSearch, elBDev, elBComp, elBFlag, elBSort].forEach(function (el) {
+  [elBSearch, elBDev, elBComp, elBCategory, elBFlag, elBMinVariance, elBSort].forEach(function (el) {
     el.addEventListener("input", renderBudgetView);
     el.addEventListener("change", renderBudgetView);
   });
