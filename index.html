@@ -759,6 +759,21 @@
   .budget-detail-group ul { margin: 0; padding: 0; list-style: none; font-size: 12.5px; }
   .budget-detail-group li { padding: 2px 0; white-space: nowrap; }
   .budget-detail-group .code { font-family: "IBM Plex Mono", ui-monospace, monospace; color: var(--text-muted); margin-right: 6px; }
+
+  .all-codes-section { padding: 4px 20px 18px; border-top: 1px solid var(--border); }
+  .all-codes-section h4 { margin: 12px 0 8px; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+  .all-codes-wrap { max-height: 420px; overflow-y: auto; overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
+  .all-codes-table { width: 100%; border-collapse: collapse; font-size: 12.5px; white-space: nowrap; }
+  .all-codes-table th, .all-codes-table td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+  .all-codes-table thead th { position: sticky; top: 0; background: var(--surface); color: var(--text-muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 500; }
+  .all-codes-table .num-col { text-align: right; font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  .all-codes-table tr.clean td { color: var(--text-muted); }
+  .all-codes-table tr:last-child td { border-bottom: none; }
+  .line-flag { display: inline-block; font-size: 10.5px; font-weight: 500; padding: 2px 7px; border-radius: 999px; margin-right: 4px; white-space: nowrap; }
+  .line-flag.over { background: var(--critical-soft); color: var(--critical); }
+  .line-flag.unbudgeted { background: var(--warning-soft); color: var(--warning); }
+  .line-flag.missing { background: var(--accent-soft); color: var(--accent); }
+  .line-flag.negative { background: var(--nobudget-soft); color: var(--nobudget); }
   .stage-pill {
     display: inline-block;
     font-family: "IBM Plex Mono", monospace;
@@ -2346,50 +2361,57 @@
     minVariance = minVariance || 0;
     var idx = budgetIndex[h.id] || {};
     var totalBudget = 0, totalActual = 0;
-    var overLines = [], missingLines = [], unbudgetedLines = [], negativeLines = [];
+    // Every cost code the house has in accounting -- not just the flagged ones -- so the
+    // detail view can show the complete picture, discrepancy or not.
+    var allLines = [];
     Object.keys(idx).forEach(function (code) {
       var info = idx[code];
       var b = info.budget, a = info.actual;
       if (b !== null) totalBudget += b;
       if (a !== null) totalActual += a;
-      var row = { code: code, label: info.label, category: info.category };
-      if (b !== null && a !== null && (a - b) > 0.01) {
-        if ((a - b) >= minVariance) overLines.push(Object.assign({}, row, { budget: b, actual: a, diff: a - b }));
-      } else if (b !== null && a === null) {
-        missingLines.push(Object.assign({}, row, { budget: b }));
-      } else if (b === null && a !== null) {
-        if (Math.abs(a) >= minVariance) unbudgetedLines.push(Object.assign({}, row, { actual: a }));
-      }
-      // Negative actual is an independent flag -- a line can be both "no budget" and
+      var diff = (b !== null && a !== null) ? (a - b) : null;
+      var flags = [];
+      if (diff !== null && diff > 0.01 && diff >= minVariance) flags.push("over");
+      if (b === null && a !== null && Math.abs(a) >= minVariance) flags.push("unbudgeted");
+      if (b !== null && a === null) flags.push("missing");
+      // Negative actual is independent of the others -- a line can be both "no budget" and
       // "negative" at once (e.g. a credit posted against a cost code with no budget set).
-      if (a !== null && a < -0.01 && Math.abs(a) >= minVariance) negativeLines.push(Object.assign({}, row, { actual: a }));
+      if (a !== null && a < -0.01 && Math.abs(a) >= minVariance) flags.push("negative");
+      allLines.push({ code: code, label: info.label, category: info.category, budget: b, actual: a, diff: diff, flags: flags });
     });
+    allLines.sort(function (x, y) { return (x.category || "").localeCompare(y.category || "") || x.code.localeCompare(y.code); });
+
+    function withFlag(name) { return allLines.filter(function (l) { return l.flags.indexOf(name) !== -1; }); }
+    var overLines = withFlag("over"), missingLines = withFlag("missing"), unbudgetedLines = withFlag("unbudgeted"), negativeLines = withFlag("negative");
     var overAmount = overLines.reduce(function (s, l) { return s + l.diff; }, 0);
     var missingAmount = missingLines.reduce(function (s, l) { return s + l.budget; }, 0);
     var unbudgetedAmount = unbudgetedLines.reduce(function (s, l) { return s + l.actual; }, 0);
     var negativeAmount = negativeLines.reduce(function (s, l) { return s + Math.abs(l.actual); }, 0);
     return {
-      h: h, totalBudget: totalBudget, totalActual: totalActual,
+      h: h, totalBudget: totalBudget, totalActual: totalActual, allLines: allLines,
       overLines: overLines, missingLines: missingLines, unbudgetedLines: unbudgetedLines, negativeLines: negativeLines,
       overAmount: overAmount, missingAmount: missingAmount, unbudgetedAmount: unbudgetedAmount, negativeAmount: negativeAmount,
-      hasBudgetData: Object.keys(idx).length > 0
+      hasBudgetData: allLines.length > 0
     };
   }
 
   function budgetAnalysisMatchesFilters(a, f) {
     var h = a.h;
-    var allLines = [].concat(a.overLines, a.missingLines, a.unbudgetedLines, a.negativeLines);
+    // Search/category narrow to houses with a matching *flagged* line -- matching against
+    // every clean line too would make these filters nearly meaningless (almost every house
+    // touches almost every category).
+    var flaggedLines = [].concat(a.overLines, a.missingLines, a.unbudgetedLines, a.negativeLines);
     if (f.q) {
       var hay = (h.address + " " + h.id + " " + (h.pm || "") + " " + (h.lotNumber || "")).toLowerCase();
       var matchesHouse = hay.indexOf(f.q) !== -1;
-      var matchesLine = !matchesHouse && allLines.some(function (l) {
+      var matchesLine = !matchesHouse && flaggedLines.some(function (l) {
         return ((l.code || "") + " " + (l.label || "") + " " + (l.category || "")).toLowerCase().indexOf(f.q) !== -1;
       });
       if (!matchesHouse && !matchesLine) return false;
     }
     if (f.dev && h.dev !== f.dev) return false;
     if (f.comp && h.comp !== f.comp) return false;
-    if (f.category && !allLines.some(function (l) { return l.category === f.category; })) return false;
+    if (f.category && !flaggedLines.some(function (l) { return l.category === f.category; })) return false;
     if (f.flag === "over" && !a.overLines.length) return false;
     if (f.flag === "missing" && !a.missingLines.length) return false;
     if (f.flag === "unbudgeted" && !a.unbudgetedLines.length) return false;
@@ -2406,6 +2428,13 @@
     return function (a, b) { return b.overAmount - a.overAmount; }; // default: "over"
   }
 
+  var FLAG_BADGE = {
+    over: '<span class="line-flag over">Over Budget</span>',
+    unbudgeted: '<span class="line-flag unbudgeted">No Budget</span>',
+    missing: '<span class="line-flag missing">Missing Actual</span>',
+    negative: '<span class="line-flag negative">Negative</span>'
+  };
+
   function budgetDetailHtml(a) {
     function group(title, lines, fmt) {
       if (!lines.length) return "";
@@ -2413,15 +2442,35 @@
         lines.map(function (l) { return '<li><span class="code">' + escapeHtml(l.code) + "</span>" + escapeHtml(l.label || "") + " — " + fmt(l) + "</li>"; }).join("") +
         "</ul></div>";
     }
-    if (!a.overLines.length && !a.missingLines.length && !a.unbudgetedLines.length && !a.negativeLines.length) {
-      return '<div class="budget-detail-groups"><span style="color:var(--text-muted)">Every cost code lines up with accounting — nothing flagged.</span></div>';
-    }
-    return '<div class="budget-detail-groups">' +
-      group("Over Budget", a.overLines, function (l) { return fmtAmount(l.budget) + " → " + fmtAmount(l.actual) + " (+" + fmtAmount(l.diff) + ")"; }) +
-      group("Actual, No Budget", a.unbudgetedLines, function (l) { return "Actual " + fmtAmount(l.actual); }) +
-      group("Missing Actual", a.missingLines, function (l) { return "Budget " + fmtAmount(l.budget); }) +
-      group("Negative Actual", a.negativeLines, function (l) { return "Actual " + fmtAmount(l.actual); }) +
+    var summaryHtml = (!a.overLines.length && !a.missingLines.length && !a.unbudgetedLines.length && !a.negativeLines.length)
+      ? '<div class="budget-detail-groups"><span style="color:var(--text-muted)">Every cost code lines up with accounting — nothing flagged.</span></div>'
+      : '<div class="budget-detail-groups">' +
+        group("Over Budget", a.overLines, function (l) { return fmtAmount(l.budget) + " → " + fmtAmount(l.actual) + " (+" + fmtAmount(l.diff) + ")"; }) +
+        group("Actual, No Budget", a.unbudgetedLines, function (l) { return "Actual " + fmtAmount(l.actual); }) +
+        group("Missing Actual", a.missingLines, function (l) { return "Budget " + fmtAmount(l.budget); }) +
+        group("Negative Actual", a.negativeLines, function (l) { return "Actual " + fmtAmount(l.actual); }) +
+        "</div>";
+
+    var allRowsHtml = a.allLines.map(function (l) {
+      var badges = l.flags.map(function (f) { return FLAG_BADGE[f]; }).join(" ");
+      return "<tr" + (l.flags.length ? "" : ' class="clean"') + ">" +
+        "<td>" + escapeHtml(l.code) + "</td>" +
+        "<td>" + escapeHtml(l.category || "") + "</td>" +
+        "<td>" + escapeHtml(l.label || "") + "</td>" +
+        '<td class="num-col">' + (l.budget !== null ? fmtAmount(l.budget) : "—") + "</td>" +
+        '<td class="num-col">' + (l.actual !== null ? fmtAmount(l.actual) : "—") + "</td>" +
+        "<td>" + (badges || "") + "</td>" +
+      "</tr>";
+    }).join("");
+    var allCodesHtml =
+      '<div class="all-codes-section">' +
+        "<h4>All Cost Codes (" + a.allLines.length + ")</h4>" +
+        '<div class="all-codes-wrap"><table class="all-codes-table"><thead><tr>' +
+          "<th>Code</th><th>Category</th><th>Description</th><th class=\"num-col\">Budget</th><th class=\"num-col\">Actual</th><th></th>" +
+        "</tr></thead><tbody>" + allRowsHtml + "</tbody></table></div>" +
       "</div>";
+
+    return summaryHtml + allCodesHtml;
   }
 
   function ensureBudgetFilterOptions(analyses) {
