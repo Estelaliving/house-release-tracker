@@ -2672,7 +2672,10 @@
       if (a !== null && a < -0.01 && Math.abs(a) >= minVariance) flags.push("negative");
       allLines.push({ code: code, label: info.label, category: info.category, costcodeNum: info.costcodeNum, costType: info.costType, budget: b, actual: a, diff: diff, flags: flags });
     });
-    allLines.sort(function (x, y) { return (x.category || "").localeCompare(y.category || "") || x.code.localeCompare(y.code); });
+    // Category code (3 digits) and cost code (2 digits) are both zero-padded consistently in
+    // the source data, so a plain string compare on the combined code already sorts correctly
+    // in ascending numeric order (e.g. 015-01, 015-02, 020-01, ..., 205-01, ...).
+    allLines.sort(function (x, y) { return x.code.localeCompare(y.code); });
 
     function withFlag(name) { return allLines.filter(function (l) { return l.flags.indexOf(name) !== -1; }); }
     var overLines = withFlag("over"), missingLines = withFlag("missing"), unbudgetedLines = withFlag("unbudgeted"), negativeLines = withFlag("negative");
