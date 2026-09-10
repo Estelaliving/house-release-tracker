@@ -789,6 +789,31 @@
   .line-flag.unbudgeted { background: var(--warning-soft); color: var(--warning); }
   .line-flag.missing { background: var(--accent-soft); color: var(--accent); }
   .line-flag.negative { background: var(--nobudget-soft); color: var(--nobudget); }
+
+  /* Scrub tab: per-line review controls */
+  .scrub-table tr.status-good td { background: var(--ok-soft); }
+  .scrub-table tr.status-bad td { background: var(--critical-soft); }
+  .scrub-mark-btns { display: flex; gap: 4px; align-items: center; white-space: nowrap; }
+  .scrub-mark-btn {
+    width: 26px; height: 26px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--surface); cursor: pointer; font-size: 14px; line-height: 1;
+    display: inline-flex; align-items: center; justify-content: center; color: var(--text-muted);
+  }
+  .scrub-mark-btn.good { color: var(--ok); }
+  .scrub-mark-btn.bad { color: var(--critical); }
+  .scrub-mark-btn.good.active { background: var(--ok); color: var(--surface); border-color: var(--ok); }
+  .scrub-mark-btn.bad.active { background: var(--critical); color: var(--surface); border-color: var(--critical); }
+  .scrub-note-input {
+    width: 100%; min-width: 160px; font-family: "IBM Plex Sans", sans-serif; font-size: 12px;
+    padding: 5px 8px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text);
+  }
+  .scrub-note-input::placeholder { color: var(--text-muted); }
+  .scrub-progress-wrap { flex: none; text-align: right; }
+  .scrub-progress-text { font-size: 12.5px; color: var(--text-muted); font-family: "IBM Plex Mono", ui-monospace, monospace; }
+  .scrub-progress-bar { width: 140px; height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; margin-top: 5px; }
+  .scrub-progress-fill { height: 100%; background: var(--accent); }
+  .scrub-clean-date { color: var(--text-muted); }
   .stage-pill {
     display: inline-block;
     font-family: "IBM Plex Mono", monospace;
@@ -827,6 +852,7 @@
   <div class="view-tabs">
     <button class="view-tab active" data-view="release" type="button">Release Tracker</button>
     <button class="view-tab" data-view="budget" type="button">Budget vs Actual</button>
+    <button class="view-tab" data-view="scrub" type="button">Scrub</button>
   </div>
 
   <div id="viewRelease">
@@ -973,6 +999,43 @@
     <div class="budget-cards" id="budgetCards"></div>
     <p class="sync-note">Budget and actual figures come straight from the accounting system's own API, refreshed every 5 minutes.</p>
   </div>
+
+  <div id="viewScrub" style="display:none">
+    <p class="subtitle">The 92 houses due for a budget scrub — go cost code by cost code, mark each ✓ correct or ✗ wrong, and leave a note (e.g. "delete — duplicate", "wrong code, should be...", "amount should be $..."). Saves live, so progress is never lost.</p>
+
+    <div class="summary-row">
+      <div class="summary-tile tone-accent">
+        <div class="num" id="scrubSumHousesDone">–</div>
+        <div class="label">Houses fully scrubbed</div>
+      </div>
+      <div class="summary-tile">
+        <div class="num" id="scrubSumLinesDone">–</div>
+        <div class="label">Cost codes reviewed</div>
+      </div>
+      <div class="summary-tile tone-critical">
+        <div class="num" id="scrubSumBad">–</div>
+        <div class="label">Marked wrong</div>
+      </div>
+    </div>
+
+    <div class="filter-bar">
+      <input type="text" id="scSearch" placeholder="Search address, house number…">
+      <select id="scStatus">
+        <option value="">All houses</option>
+        <option value="unstarted">Not started</option>
+        <option value="inprogress">In progress</option>
+        <option value="done">Fully reviewed</option>
+      </select>
+      <select id="scSort">
+        <option value="address">Sort: Address A→Z</option>
+        <option value="remaining">Sort: Most remaining first</option>
+        <option value="cleanDate">Sort: Clean date</option>
+      </select>
+      <span class="filter-count" id="scFilterCount"></span>
+    </div>
+
+    <div class="budget-cards" id="scrubCards"></div>
+  </div>
 </div>
 
 <script>
@@ -985,6 +1048,105 @@
   // released from a permit (id = the permit's own row id) need this computed separately so budget
   // lookups still land on the right accounting record.
   var DEV_HOUSENUMBER_PREFIX = { SR: "001", MO: "002", OW: "003", PC: "004", JF: "005", SB: "006", RH: "007" };
+
+  // The 92 houses due for a budget scrub (fixed list from Estela Living Operations_Units_Tabla.csv).
+  // "cleanDate" is the target date from that sheet, kept for reference/sort only -- null where
+  // the sheet had "-" (not yet scheduled). All 92 are being scrubbed in one push, so this drives
+  // no urgency styling, just a sort option.
+  var SCRUB_HOUSES = [
+    { id: "00200204", address: "320 Marion Oaks Course", cleanDate: "2026-07-23" },
+    { id: "00200291", address: "Lot 33 - 00 SW 27th Cir", cleanDate: null },
+    { id: "00300254", address: "3820 SW 113th PL", cleanDate: "2026-12-02" },
+    { id: "00300260", address: "4335 SW 108th PL", cleanDate: "2026-12-30" },
+    { id: "00300266", address: "00 SW 106th Pl", cleanDate: "2027-01-21" },
+    { id: "00300267", address: "4360 SW 106th Pl", cleanDate: "2027-01-15" },
+    { id: "00400199", address: "169 Pine Grove Dr", cleanDate: "2026-06-24" },
+    { id: "00400262", address: "3 Largo Place", cleanDate: "2026-12-30" },
+    { id: "00400268", address: "30 Burning Ember Ln", cleanDate: "2027-01-08" },
+    { id: "00400277", address: "16 Buffalo Meadow Ln", cleanDate: "2026-12-30" },
+    { id: "00400279", address: "8 Undermount Path W", cleanDate: "2027-01-25" },
+    { id: "00400285", address: "28 Ludlow Ln W", cleanDate: "2027-01-25" },
+    { id: "00600476", address: "90 Springwood Dr", cleanDate: "2026-09-14" },
+    { id: "00600478", address: "86 Springwood Dr", cleanDate: "2026-09-11" },
+    { id: "00600479", address: "84 Springwood Dr", cleanDate: "2026-09-14" },
+    { id: "00600480", address: "82 Springwood Dr", cleanDate: "2026-09-08" },
+    { id: "00300203", address: "5792 SW 117th Lane Rd", cleanDate: "2026-09-09" },
+    { id: "00300233", address: "5907 SW 107th St", cleanDate: "2026-11-10" },
+    { id: "00300245", address: "10866 SW 41st Ave", cleanDate: "2026-12-04" },
+    { id: "00300250", address: "6049 SW 116th Street Rd", cleanDate: "2026-12-14" },
+    { id: "00300272", address: "5934 SW 116th Street Rd", cleanDate: "2027-01-06" },
+    { id: "00400208", address: "7 UPLAND PL", cleanDate: "2026-09-25" },
+    { id: "00400222", address: "191 Underwood Trl", cleanDate: "2026-10-14" },
+    { id: "00400288", address: "29 Ulmaceal Path", cleanDate: null },
+    { id: "00400238", address: "19 Bonnie Ln", cleanDate: "2026-10-12" },
+    { id: "00400240", address: "47 Louisiana Dr", cleanDate: "2026-11-06" },
+    { id: "00400265", address: "8 Burland Pl", cleanDate: "2026-12-21" },
+    { id: "00400286", address: "265 Underwood Trl", cleanDate: "2027-01-11" },
+    { id: "00400289", address: "25 Ulmaceal Path", cleanDate: null },
+    { id: "00200195", address: "2910 SW 165 Street Rd", cleanDate: "2026-08-06" },
+    { id: "00200196", address: "8903 SW 135th St", cleanDate: "2026-08-18" },
+    { id: "00400223", address: "1 Zanzibar Balsan CT", cleanDate: "2026-11-03" },
+    { id: "00400258", address: "26 Birchshire Ln", cleanDate: "2026-11-18" },
+    { id: "00700275", address: "8671 SW 128th Terr", cleanDate: "2027-01-21" },
+    { id: "00700276", address: "00 SW 67th Ln", cleanDate: null },
+    { id: "00300273", address: "4981 SW 107th Loop", cleanDate: "2026-12-30" },
+    { id: "00400205", address: "21 Postman Ln", cleanDate: "2026-06-29" },
+    { id: "00400217", address: "5 Service Berry Pl", cleanDate: "2026-10-06" },
+    { id: "00400218", address: "7 Service Berry Pl", cleanDate: "2026-10-06" },
+    { id: "00700274", address: "12435 SW 80TH ST", cleanDate: "2027-01-21" },
+    { id: "00400209", address: "117 BAYSIDE DR", cleanDate: "2026-08-17" },
+    { id: "00400230", address: "20 ZORLOU CT", cleanDate: "2026-11-30" },
+    { id: "00400255", address: "5 Seriema Ct", cleanDate: "2026-12-22" },
+    { id: "00400257", address: "59 Riviera Dr", cleanDate: "2026-11-24" },
+    { id: "00400282", address: "21 Lansing Lane", cleanDate: "2026-12-29" },
+    { id: "00500152", address: "17843 SW 68th Place", cleanDate: "2025-12-15" },
+    { id: "00500156", address: "17875 SW 68th Place", cleanDate: "2025-12-15" },
+    { id: "00200190", address: "2499 SW 167th Loop", cleanDate: "2026-08-24" },
+    { id: "00200192", address: "16781 SW 20th Court Rd", cleanDate: "2026-07-24" },
+    { id: "00200294", address: "Lot 42 - 00 SW 27th Cir", cleanDate: null },
+    { id: "00400219", address: "8 Renfro Ln", cleanDate: "2026-10-13" },
+    { id: "00400237", address: "17 Bonnie Ln", cleanDate: "2026-10-23" },
+    { id: "00400239", address: "21 Bonnie Ln", cleanDate: "2026-10-12" },
+    { id: "00400244", address: "68 Lake Success Dr", cleanDate: "2026-10-23" },
+    { id: "00700281", address: "13368 SW 69th Place", cleanDate: "2027-01-21" },
+    { id: "00200252", address: "318 Marion Oaks Golf Rd", cleanDate: "2026-12-02" },
+    { id: "00200256", address: "12869 SW 38th Circle", cleanDate: "2026-12-02" },
+    { id: "00200269", address: "16674 SW 30th Terr", cleanDate: "2026-12-08" },
+    { id: "00200270", address: "16673 SW 30th Terra", cleanDate: "2026-12-16" },
+    { id: "00200271", address: "16311 SW 26th Terrace Rd", cleanDate: "2026-12-16" },
+    { id: "00200292", address: "Lot 8 - 00 SW 165th Loop", cleanDate: null },
+    { id: "00200293", address: "Lot 36 - 00 SW 27th Cir", cleanDate: null },
+    { id: "00300236", address: "4860 SW 110th St", cleanDate: "2026-12-02" },
+    { id: "00300241", address: "9964 SW 39th Ter", cleanDate: "2026-10-15" },
+    { id: "00300242", address: "4085 SW 111th Pl", cleanDate: "2026-12-02" },
+    { id: "00400178", address: "8 Rolling Sands Dr", cleanDate: "2026-10-09" },
+    { id: "00400210", address: "105 SELMA TRL", cleanDate: "2026-07-21" },
+    { id: "00400213", address: "30 UNDERWICK PATH", cleanDate: "2026-10-26" },
+    { id: "00400216", address: "67 President Ln", cleanDate: "2026-10-08" },
+    { id: "00400229", address: "18 ZORLOU CT", cleanDate: "2026-11-30" },
+    { id: "00400232", address: "8 Lewisdale Pl", cleanDate: "2026-10-12" },
+    { id: "00400234", address: "3 Lansing Ln", cleanDate: "2026-11-06" },
+    { id: "00400249", address: "106 Ramblewood Dr", cleanDate: "2026-11-19" },
+    { id: "00700280", address: "8729 SW 128th Terra", cleanDate: "2027-01-21" },
+    { id: "00700283", address: "13907 SW 53rd St", cleanDate: "2027-01-28" },
+    { id: "00700287", address: "Lot 01 SW 125th Court Rd", cleanDate: null },
+    { id: "00100007", address: "4480 NW 37TH STREET  RD", cleanDate: "2025-12-18" },
+    { id: "00100012", address: "TBD NW 45TH AVE", cleanDate: null },
+    { id: "00100015", address: "4510 NW 35TH PLACE RD", cleanDate: "2026-08-26" },
+    { id: "00100017", address: "TBD NW 35TH PLACE RD", cleanDate: null },
+    { id: "00100106", address: "4481 NW 37TH STREET  RD", cleanDate: "2027-01-25" },
+    { id: "00100111", address: "4441 NW 37TH STREET  RD", cleanDate: "2026-01-07" },
+    { id: "00100166", address: "4555 NW 35TH PLACE RD", cleanDate: null },
+    { id: "00100167", address: "TBD NW 35TH PLACE RD", cleanDate: null },
+    { id: "00100168", address: "4537 NW 35TH PLACE RD", cleanDate: null },
+    { id: "00200263", address: "2548 SW 168th Place", cleanDate: "2026-12-10" },
+    { id: "00400259", address: "21 Utopian Ct", cleanDate: "2026-12-28" },
+    { id: "00400284", address: "23 Poinsettia Ln", cleanDate: "2027-01-25" },
+    { id: "00300261", address: "4349 SW 108th PL", cleanDate: "2026-12-30" },
+    { id: "00200290", address: "Lot 7 - 00 SW 165th Loop", cleanDate: null },
+    { id: "00200197", address: "3859 SW 169th Lane Rd", cleanDate: "2026-08-20" },
+    { id: "00200189", address: "630 Marion Oaks Blvd", cleanDate: "2026-07-20" }
+  ];
   function computeHousenumber(dev, lotNumber) {
     var prefix = DEV_HOUSENUMBER_PREFIX[dev];
     if (!prefix || lotNumber === null || lotNumber === undefined || isNaN(lotNumber)) return null;
@@ -1959,6 +2121,105 @@
     document.getElementById("connBanner").classList.add("show");
   }
 
+  // ---- Scrub review: per-cost-code sign-off state for the 92-house scrub project.
+  // Same shared-blob + fetch-merge-write + realtime pattern as house_release_database,
+  // just a separate table since this is a distinct, much larger dataset (92 houses x
+  // ~100+ cost codes) that doesn't belong mixed into that blob. ----
+  var SCRUB_SB_TABLE = "scrub_review";
+  var scrubBlob = { version: 0, updatedBy: "", houses: {} }; // lot -> code -> {status, note, _ts}
+  var scrubDataLoaded = false;
+  var _scrubLastRemoteVersion = 0;
+  var _scrubSaveInFlight = false, _scrubSaveQueued = false, _scrubSaveTimer = null;
+
+  function applyScrubIncoming(blob) {
+    if (!blob || !blob.houses) return;
+    Object.keys(blob.houses).forEach(function (lot) {
+      if (!scrubBlob.houses[lot]) scrubBlob.houses[lot] = {};
+      Object.keys(blob.houses[lot]).forEach(function (code) {
+        var incoming = blob.houses[lot][code];
+        var mine = scrubBlob.houses[lot][code];
+        if (incoming && (!mine || (incoming._ts || 0) > (mine._ts || 0))) scrubBlob.houses[lot][code] = incoming;
+      });
+    });
+    scrubDataLoaded = true;
+    if (typeof renderScrubView === "function") renderScrubView();
+  }
+
+  function pushScrubRemote() {
+    var sb = getSB();
+    if (!sb) return Promise.resolve();
+    if (_scrubSaveInFlight) { _scrubSaveQueued = true; return Promise.resolve(); }
+    _scrubSaveInFlight = true;
+    return sb.from(SCRUB_SB_TABLE).select("data").eq("id", 1).single().then(function (res) {
+      var remote = res && res.data && res.data.data;
+      if (remote && remote.houses) {
+        Object.keys(remote.houses).forEach(function (lot) {
+          if (!scrubBlob.houses[lot]) scrubBlob.houses[lot] = {};
+          Object.keys(remote.houses[lot]).forEach(function (code) {
+            var r = remote.houses[lot][code];
+            var mine = scrubBlob.houses[lot][code];
+            if (r && (!mine || (r._ts || 0) > (mine._ts || 0))) scrubBlob.houses[lot][code] = r;
+          });
+        });
+      }
+      scrubBlob.version = Date.now();
+      scrubBlob.updatedBy = "Estela Living team";
+      return sb.from(SCRUB_SB_TABLE).upsert({ id: 1, data: scrubBlob, updated_at: new Date().toISOString() });
+    }).then(function (res) {
+      if (res && res.error) throw res.error;
+      _scrubLastRemoteVersion = scrubBlob.version;
+    }).catch(function (err) {
+      console.warn("Scrub save failed:", err);
+    }).then(function () {
+      _scrubSaveInFlight = false;
+      if (_scrubSaveQueued) { _scrubSaveQueued = false; pushScrubRemote(); }
+    });
+  }
+  function scheduleScrubSave() {
+    clearTimeout(_scrubSaveTimer);
+    _scrubSaveTimer = setTimeout(pushScrubRemote, 700);
+  }
+
+  function pullScrubRemote() {
+    var sb = getSB();
+    if (!sb) return Promise.resolve();
+    return sb.from(SCRUB_SB_TABLE).select("data").eq("id", 1).single().then(function (res) {
+      var d = res && res.data && res.data.data;
+      if (!d) return;
+      if (d.version && d.version <= _scrubLastRemoteVersion) return;
+      _scrubLastRemoteVersion = d.version || _scrubLastRemoteVersion;
+      applyScrubIncoming(d);
+    }, function () {});
+  }
+
+  function startScrubRealtime() {
+    var sb = getSB();
+    if (!sb) return;
+    sb.channel("scrub-review-db")
+      .on("postgres_changes", { event: "*", schema: "public", table: SCRUB_SB_TABLE, filter: "id=eq.1" }, function (payload) {
+        var d = payload.new && payload.new.data;
+        if (!d || (d.version && d.version <= _scrubLastRemoteVersion)) return;
+        _scrubLastRemoteVersion = d.version || _scrubLastRemoteVersion;
+        applyScrubIncoming(d);
+      })
+      .subscribe();
+  }
+
+  if (window.supabase) {
+    pullScrubRemote().then(startScrubRealtime);
+    setInterval(pullScrubRemote, 30000);
+  }
+
+  function getScrubMark(lot, code) {
+    return (scrubBlob.houses[lot] && scrubBlob.houses[lot][code]) || {};
+  }
+  function setScrubMark(lot, code, patch) {
+    if (!scrubBlob.houses[lot]) scrubBlob.houses[lot] = {};
+    var existing = scrubBlob.houses[lot][code] || {};
+    scrubBlob.houses[lot][code] = Object.assign({}, existing, patch, { _ts: Date.now() });
+    scheduleScrubSave();
+  }
+
   // ---- Real budget data, from the accounting system's own API (not this tool's storage) ----
   var BUDGET_API_URL = "https://ugen7uxo8f.execute-api.us-east-2.amazonaws.com/prod/housebudget";
   var BUDGET_REFRESH_MS = 300000; // 5 min -- accounting data doesn't change minute to minute
@@ -2023,6 +2284,7 @@
       if (typeof renderAlertsPanel === "function") renderAlertsPanel();
       if (typeof renderBatchWorklist === "function") renderBatchWorklist();
       if (typeof renderBudgetView === "function") renderBudgetView();
+      if (typeof renderScrubView === "function") renderScrubView();
     }).catch(function (err) {
       console.warn("Budget API load failed:", err);
     });
@@ -2727,9 +2989,10 @@
     el.addEventListener("change", renderBudgetView);
   });
 
-  // ---- View tab switching (Release Tracker <-> Budget vs Actual) ----
+  // ---- View tab switching (Release Tracker <-> Budget vs Actual <-> Scrub) ----
   var viewReleaseEl = document.getElementById("viewRelease");
   var viewBudgetEl = document.getElementById("viewBudget");
+  var viewScrubEl = document.getElementById("viewScrub");
   Array.prototype.forEach.call(document.querySelectorAll(".view-tab"), function (btn) {
     btn.addEventListener("click", function () {
       Array.prototype.forEach.call(document.querySelectorAll(".view-tab"), function (b) { b.classList.remove("active"); });
@@ -2737,9 +3000,146 @@
       var view = btn.dataset.view;
       viewReleaseEl.style.display = view === "release" ? "" : "none";
       viewBudgetEl.style.display = view === "budget" ? "" : "none";
+      viewScrubEl.style.display = view === "scrub" ? "" : "none";
       if (view === "budget") renderBudgetView();
+      if (view === "scrub") renderScrubView();
     });
   });
+
+  var elScSearch = document.getElementById("scSearch");
+  var elScStatus = document.getElementById("scStatus");
+  var elScSort = document.getElementById("scSort");
+  [elScSearch, elScStatus, elScSort].forEach(function (el) {
+    el.addEventListener("input", renderScrubView);
+    el.addEventListener("change", renderScrubView);
+  });
+
+  function updateScrubCardProgress(card, lot, a) {
+    var marks = scrubBlob.houses[lot] || {};
+    var total = a.allLines.length;
+    var reviewed = a.allLines.filter(function (l) { return marks[l.code] && marks[l.code].status; }).length;
+    var pct = total ? Math.round((reviewed / total) * 100) : 0;
+    card.querySelector(".scrub-progress-text").textContent = reviewed + " / " + total + " reviewed";
+    card.querySelector(".scrub-progress-fill").style.width = pct + "%";
+  }
+
+  function renderScrubView() {
+    var container = document.getElementById("scrubCards");
+    if (!container) return;
+    // Only cost-code data is required to paint the cards -- scrub marks default to
+    // unreviewed when absent, so there's no need to block on them loading; they merge
+    // in (and re-render) the moment applyScrubIncoming() hears back from Supabase.
+    if (!budgetDataLoaded) {
+      container.innerHTML = '<div class="alert-empty">Loading…</div>';
+      return;
+    }
+    var q = elScSearch.value.trim().toLowerCase();
+    var statusFilter = elScStatus.value;
+    var sortMode = elScSort.value;
+
+    var rows = SCRUB_HOUSES.map(function (h) {
+      var a = computeHouseBudgetAnalysis({ id: h.id }, 0);
+      var marks = scrubBlob.houses[h.id] || {};
+      var total = a.allLines.length;
+      var reviewed = a.allLines.filter(function (l) { return marks[l.code] && marks[l.code].status; }).length;
+      var bad = a.allLines.filter(function (l) { return marks[l.code] && marks[l.code].status === "bad"; }).length;
+      var status = total === 0 ? "empty" : (reviewed === 0 ? "unstarted" : (reviewed >= total ? "done" : "inprogress"));
+      return { h: h, a: a, total: total, reviewed: reviewed, bad: bad, status: status };
+    });
+
+    var filtered = rows.filter(function (r) {
+      if (q && (r.h.address + " " + r.h.id).toLowerCase().indexOf(q) === -1) return false;
+      if (statusFilter && r.status !== statusFilter) return false;
+      return true;
+    });
+    filtered.sort(function (r1, r2) {
+      if (sortMode === "remaining") return (r2.total - r2.reviewed) - (r1.total - r1.reviewed);
+      if (sortMode === "cleanDate") return (r1.h.cleanDate || "9999-99-99").localeCompare(r2.h.cleanDate || "9999-99-99");
+      return r1.h.address.localeCompare(r2.h.address);
+    });
+
+    var housesDone = rows.filter(function (r) { return r.status === "done"; }).length;
+    document.getElementById("scrubSumHousesDone").textContent = housesDone + " / " + SCRUB_HOUSES.length;
+    document.getElementById("scrubSumLinesDone").textContent = rows.reduce(function (s, r) { return s + r.reviewed; }, 0);
+    document.getElementById("scrubSumBad").textContent = rows.reduce(function (s, r) { return s + r.bad; }, 0);
+    document.getElementById("scFilterCount").textContent = filtered.length + " / " + SCRUB_HOUSES.length + " houses";
+
+    container.innerHTML = "";
+    if (!filtered.length) {
+      container.innerHTML = '<div class="alert-empty">No houses match the current filters.</div>';
+      return;
+    }
+
+    filtered.forEach(function (r) {
+      var h = r.h, a = r.a;
+      var pct = r.total ? Math.round((r.reviewed / r.total) * 100) : 0;
+      var card = document.createElement("div");
+      card.className = "budget-house-card";
+      card.dataset.lot = h.id;
+      var rowsHtml = a.allLines.map(function (l) {
+        var mark = getScrubMark(h.id, l.code);
+        var badges = l.flags.map(function (f) { return FLAG_BADGE[f]; }).join(" ");
+        var rowCls = mark.status === "good" ? "status-good" : (mark.status === "bad" ? "status-bad" : "");
+        return '<tr class="' + rowCls + '" data-code="' + escapeHtml(l.code) + '">' +
+          "<td>" + escapeHtml(l.code) + "</td>" +
+          "<td>" + escapeHtml(l.category || "") + "</td>" +
+          "<td>" + escapeHtml(l.label || "") + "</td>" +
+          '<td class="num-col">' + (l.budget !== null ? fmtAmount(l.budget) : "—") + "</td>" +
+          '<td class="num-col">' + (l.actual !== null ? fmtAmount(l.actual) : "—") + "</td>" +
+          "<td>" + (badges || "") + "</td>" +
+          '<td><div class="scrub-mark-btns">' +
+            '<button type="button" class="scrub-mark-btn good' + (mark.status === "good" ? " active" : "") + '" data-mark="good" title="Correct">✓</button>' +
+            '<button type="button" class="scrub-mark-btn bad' + (mark.status === "bad" ? " active" : "") + '" data-mark="bad" title="Wrong">✗</button>' +
+          "</div></td>" +
+          '<td><input type="text" class="scrub-note-input" placeholder="Note…" value="' + escapeHtml(mark.note || "") + '"></td>' +
+        "</tr>";
+      }).join("");
+
+      card.innerHTML =
+        '<div class="bh-head">' +
+          "<div>" +
+            '<div class="bh-address">' + escapeHtml(h.address) + "</div>" +
+            '<div class="bh-meta"><span>' + escapeHtml(h.id) + "</span>" +
+              (h.cleanDate ? '<span class="scrub-clean-date">Clean date ' + escapeHtml(h.cleanDate) + "</span>" : '<span class="scrub-clean-date">Not scheduled</span>') +
+            "</div>" +
+          "</div>" +
+          '<div class="scrub-progress-wrap">' +
+            '<div class="scrub-progress-text">' + r.reviewed + " / " + r.total + " reviewed</div>" +
+            '<div class="scrub-progress-bar"><div class="scrub-progress-fill" style="width:' + pct + '%"></div></div>' +
+          "</div>" +
+        "</div>" +
+        '<div class="all-codes-wrap"><table class="all-codes-table scrub-table"><thead><tr>' +
+          "<th>Code</th><th>Category</th><th>Description</th><th class=\"num-col\">Budget</th><th class=\"num-col\">Actual</th><th>Flags</th><th>Mark</th><th>Note</th>" +
+        "</tr></thead><tbody>" + rowsHtml + "</tbody></table></div>";
+
+      Array.prototype.forEach.call(card.querySelectorAll(".scrub-mark-btn"), function (btn) {
+        btn.addEventListener("click", function () {
+          var tr = btn.closest("tr");
+          var code = tr.dataset.code;
+          var wantStatus = btn.dataset.mark;
+          var current = getScrubMark(h.id, code).status;
+          var newStatus = current === wantStatus ? null : wantStatus; // click the active one again to clear it
+          setScrubMark(h.id, code, { status: newStatus });
+          tr.classList.remove("status-good", "status-bad");
+          if (newStatus) tr.classList.add("status-" + newStatus);
+          Array.prototype.forEach.call(tr.querySelectorAll(".scrub-mark-btn"), function (b) { b.classList.remove("active"); });
+          if (newStatus) tr.querySelector('.scrub-mark-btn[data-mark="' + newStatus + '"]').classList.add("active");
+          updateScrubCardProgress(card, h.id, a);
+        });
+      });
+      var noteDebounce = {};
+      Array.prototype.forEach.call(card.querySelectorAll(".scrub-note-input"), function (input) {
+        input.addEventListener("input", function () {
+          var tr = input.closest("tr");
+          var code = tr.dataset.code;
+          clearTimeout(noteDebounce[code]);
+          noteDebounce[code] = setTimeout(function () { setScrubMark(h.id, code, { note: input.value }); }, 500);
+        });
+      });
+
+      container.appendChild(card);
+    });
+  }
 
   renderAlertsPanel();
   renderBatchWorklist();
