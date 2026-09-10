@@ -821,6 +821,17 @@
   .update-status-badge.updated { background: var(--ok-soft); color: var(--ok); }
   .update-status-badge.notupdated { background: var(--warning-soft); color: var(--warning); }
   .update-status-badge.nosnapshot { background: var(--surface-2); color: var(--text-muted); }
+  .scrub-mark-counts { margin-top: 6px; font-size: 11.5px; display: flex; gap: 8px; justify-content: flex-end; }
+  .scrub-count-good { color: var(--ok); }
+  .scrub-count-bad { color: var(--critical); }
+  .scrub-count-changed { color: var(--accent); }
+  .scrub-notes-panel { padding: 10px 20px; border-bottom: 1px solid var(--border); background: var(--surface-2); }
+  .scrub-notes-panel h4 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+  .scrub-notes-panel ul { margin: 0; padding: 0; list-style: none; font-size: 12.5px; }
+  .scrub-notes-panel li { padding: 3px 0; }
+  .scrub-notes-panel li .code { font-family: "IBM Plex Mono", ui-monospace, monospace; color: var(--text-muted); margin-right: 6px; }
+  .scrub-notes-panel li.good { color: var(--ok); }
+  .scrub-notes-panel li.bad { color: var(--critical); }
   .stage-pill {
     display: inline-block;
     font-family: "IBM Plex Mono", monospace;
@@ -3073,18 +3084,35 @@
     elScDev.value = curDev; elScComp.value = curComp;
   }
 
-  function scrubUpdateStatus(h, a, marks) {
-    var codes = Object.keys(marks);
-    var hasSnapshot = codes.some(function (c) { return marks[c].origBudget !== undefined || marks[c].origActual !== undefined; });
-    if (!hasSnapshot) return "nosnapshot";
-    var changed = a.allLines.some(function (l) {
+  // Single source of truth for everything a scrub card shows about one house --
+  // review progress, good/bad marks, which lines changed since the starting snapshot,
+  // and the running list of notes. Consolidated into one pass (rather than separate
+  // functions each re-deriving "changed since snapshot" their own way) after finding a
+  // real bug where two independent implementations of that comparison disagreed.
+  function computeScrubSummary(a, marks) {
+    var total = a.allLines.length;
+    var reviewed = 0, good = 0, bad = 0, changedCount = 0, hasSnapshot = false;
+    var notes = [];
+    a.allLines.forEach(function (l) {
       var m = marks[l.code];
-      if (!m || (m.origBudget === undefined && m.origActual === undefined)) return false;
-      var budgetChanged = m.origBudget !== undefined && Math.abs((m.origBudget || 0) - (l.budget || 0)) > 0.01;
-      var actualChanged = m.origActual !== undefined && Math.abs((m.origActual || 0) - (l.actual || 0)) > 0.01;
-      return budgetChanged || actualChanged;
+      if (m && m.status) {
+        reviewed++;
+        if (m.status === "good") good++;
+        if (m.status === "bad") bad++;
+      }
+      if (m && (m.origBudget !== undefined || m.origActual !== undefined)) {
+        hasSnapshot = true;
+        var budgetChanged = m.origBudget !== undefined && Math.abs((m.origBudget || 0) - (l.budget || 0)) > 0.01;
+        var actualChanged = m.origActual !== undefined && Math.abs((m.origActual || 0) - (l.actual || 0)) > 0.01;
+        if (budgetChanged || actualChanged) changedCount++;
+      }
+      if (m && m.note && m.note.trim()) {
+        notes.push({ code: l.code, category: l.category, label: l.label, note: m.note.trim(), status: m.status || null });
+      }
     });
-    return changed ? "updated" : "notupdated";
+    var status = total === 0 ? "empty" : (reviewed === 0 ? "unstarted" : (reviewed >= total ? "done" : "inprogress"));
+    var updateStatus = !hasSnapshot ? "nosnapshot" : (changedCount > 0 ? "updated" : "notupdated");
+    return { total: total, reviewed: reviewed, good: good, bad: bad, changedCount: changedCount, notes: notes, status: status, updateStatus: updateStatus };
   }
 
   // Snapshots today's budget/actual for every cost code across all 92 houses, once -- so
@@ -3120,13 +3148,47 @@
       : "Nothing new to capture — every cost code already has a starting snapshot.";
   });
 
+  // Compact rundown of every note left on a house, with a colored dot matching that
+  // line's mark (or unmarked), so you can see everything flagged for follow-up without
+  // scrolling the full cost-code table.
+  function scrubNotesPanelHtml(notes) {
+    return '<div class="scrub-notes-panel"><h4>Notes (' + notes.length + ")</h4><ul>" +
+      notes.map(function (n) {
+        var statusCls = n.status === "good" ? "good" : (n.status === "bad" ? "bad" : "unmarked");
+        return '<li class="' + statusCls + '"><span class="code">' + escapeHtml(n.code) + "</span>" +
+          escapeHtml(n.label || n.category || "") + ": " + escapeHtml(n.note) + "</li>";
+      }).join("") +
+      "</ul></div>";
+  }
+
   function updateScrubCardProgress(card, lot, a) {
     var marks = scrubBlob.houses[lot] || {};
-    var total = a.allLines.length;
-    var reviewed = a.allLines.filter(function (l) { return marks[l.code] && marks[l.code].status; }).length;
-    var pct = total ? Math.round((reviewed / total) * 100) : 0;
-    card.querySelector(".scrub-progress-text").textContent = reviewed + " / " + total + " reviewed";
+    var s = computeScrubSummary(a, marks);
+    var pct = s.total ? Math.round((s.reviewed / s.total) * 100) : 0;
+    card.querySelector(".scrub-progress-text").textContent = s.reviewed + " / " + s.total + " reviewed";
     card.querySelector(".scrub-progress-fill").style.width = pct + "%";
+    card.querySelector(".scrub-count-good").textContent = "✓ " + s.good;
+    card.querySelector(".scrub-count-bad").textContent = "✗ " + s.bad;
+    var changedEl = card.querySelector(".scrub-count-changed");
+    if (s.changedCount) {
+      if (!changedEl) {
+        changedEl = document.createElement("span");
+        changedEl.className = "scrub-count-changed";
+        card.querySelector(".scrub-mark-counts").appendChild(changedEl);
+      }
+      changedEl.textContent = s.changedCount + " changed";
+    } else if (changedEl) {
+      changedEl.remove();
+    }
+    var existingPanel = card.querySelector(".scrub-notes-panel");
+    if (s.notes.length) {
+      var freshPanel = document.createElement("div");
+      freshPanel.innerHTML = scrubNotesPanelHtml(s.notes);
+      if (existingPanel) existingPanel.replaceWith(freshPanel.firstChild);
+      else card.querySelector(".bh-head").insertAdjacentElement("afterend", freshPanel.firstChild);
+    } else if (existingPanel) {
+      existingPanel.remove();
+    }
   }
 
   function renderScrubView() {
@@ -3148,12 +3210,8 @@
       var a = computeHouseBudgetAnalysis({ id: h.id }, 0);
       var marks = scrubBlob.houses[h.id] || {};
       var meta = budgetHouseMeta[h.id] || {};
-      var total = a.allLines.length;
-      var reviewed = a.allLines.filter(function (l) { return marks[l.code] && marks[l.code].status; }).length;
-      var bad = a.allLines.filter(function (l) { return marks[l.code] && marks[l.code].status === "bad"; }).length;
-      var status = total === 0 ? "empty" : (reviewed === 0 ? "unstarted" : (reviewed >= total ? "done" : "inprogress"));
-      var updateStatus = scrubUpdateStatus(h, a, marks);
-      return { h: h, a: a, dev: meta.dev || "", comp: meta.comp || "", companyName: companyNames[meta.comp] || "", total: total, reviewed: reviewed, bad: bad, status: status, updateStatus: updateStatus };
+      var s = computeScrubSummary(a, marks);
+      return Object.assign({ h: h, a: a, dev: meta.dev || "", comp: meta.comp || "", companyName: companyNames[meta.comp] || "" }, s);
     });
     ensureScrubFilterOptions(rows);
 
@@ -3236,8 +3294,14 @@
           '<div class="scrub-progress-wrap">' +
             '<div class="scrub-progress-text">' + r.reviewed + " / " + r.total + " reviewed</div>" +
             '<div class="scrub-progress-bar"><div class="scrub-progress-fill" style="width:' + pct + '%"></div></div>' +
+            '<div class="scrub-mark-counts">' +
+              '<span class="scrub-count-good">✓ ' + r.good + "</span>" +
+              '<span class="scrub-count-bad">✗ ' + r.bad + "</span>" +
+              (r.changedCount ? '<span class="scrub-count-changed">' + r.changedCount + " changed</span>" : "") +
+            "</div>" +
           "</div>" +
         "</div>" +
+        (r.notes.length ? scrubNotesPanelHtml(r.notes) : "") +
         '<div class="all-codes-wrap"><table class="all-codes-table scrub-table"><thead><tr>' +
           "<th>Code</th><th>Category</th><th>Description</th><th class=\"num-col\">Budget</th><th class=\"num-col\">Actual</th><th>Flags</th><th>Mark</th><th>Note</th>" +
         "</tr></thead><tbody>" + rowsHtml + "</tbody></table></div>";
@@ -3263,7 +3327,10 @@
           var tr = input.closest("tr");
           var code = tr.dataset.code;
           clearTimeout(noteDebounce[code]);
-          noteDebounce[code] = setTimeout(function () { setScrubMark(h.id, code, { note: input.value }); }, 500);
+          noteDebounce[code] = setTimeout(function () {
+            setScrubMark(h.id, code, { note: input.value });
+            updateScrubCardProgress(card, h.id, a);
+          }, 500);
         });
       });
 
