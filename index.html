@@ -814,6 +814,9 @@
   .scrub-progress-bar { width: 140px; height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; margin-top: 5px; }
   .scrub-progress-fill { height: 100%; background: var(--accent); }
   .scrub-clean-date { color: var(--text-muted); }
+  .scrub-snapshot-row { display: flex; align-items: center; gap: 14px; margin-top: 14px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+  .scrub-snapshot-status { font-size: 12.5px; color: var(--text-muted); }
+  .scrub-orig-value { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
   .stage-pill {
     display: inline-block;
     font-family: "IBM Plex Mono", monospace;
@@ -1002,6 +1005,11 @@
 
   <div id="viewScrub" style="display:none">
     <p class="subtitle">The 92 houses due for a budget scrub — go cost code by cost code, mark each ✓ correct or ✗ wrong, and leave a note (e.g. "delete — duplicate", "wrong code, should be...", "amount should be $..."). Saves live, so progress is never lost.</p>
+
+    <div class="scrub-snapshot-row">
+      <button type="button" class="add-btn" id="scSnapshotBtn">Capture Starting Budgets</button>
+      <span id="scSnapshotStatus" class="scrub-snapshot-status">Snapshots the current budget/actual for every cost code, once — so once you update the accounting system, this view can show "was $X → now $Y" instead of losing the original number. Safe to click more than once; it never overwrites a cost code that's already been snapshotted.</span>
+    </div>
 
     <div class="summary-row">
       <div class="summary-tile tone-accent">
@@ -3017,6 +3025,39 @@
     el.addEventListener("change", renderScrubView);
   });
 
+  // Snapshots today's budget/actual for every cost code across all 92 houses, once -- so
+  // once the accounting system gets updated, the Scrub tab can still show what it used to
+  // be. Never overwrites a cost code that's already been snapshotted, so it's safe to
+  // press again later (e.g. to pick up any houses that hadn't loaded budget data yet).
+  function captureScrubSnapshot() {
+    var count = 0;
+    SCRUB_HOUSES.forEach(function (h) {
+      var a = computeHouseBudgetAnalysis({ id: h.id }, 0);
+      a.allLines.forEach(function (l) {
+        if (!scrubBlob.houses[h.id]) scrubBlob.houses[h.id] = {};
+        var existing = scrubBlob.houses[h.id][l.code] || {};
+        if (existing.origBudget !== undefined) return;
+        scrubBlob.houses[h.id][l.code] = Object.assign({}, existing, { origBudget: l.budget, origActual: l.actual, _ts: Date.now() });
+        count++;
+      });
+    });
+    if (count > 0) scheduleScrubSave();
+    renderScrubView();
+    return count;
+  }
+
+  document.getElementById("scSnapshotBtn").addEventListener("click", function () {
+    var statusEl = document.getElementById("scSnapshotStatus");
+    if (!budgetDataLoaded) {
+      statusEl.textContent = "Budget data hasn't loaded yet — try again in a moment.";
+      return;
+    }
+    var n = captureScrubSnapshot();
+    statusEl.textContent = n > 0
+      ? "Captured starting budget/actual for " + n + " cost code" + (n === 1 ? "" : "s") + " just now."
+      : "Nothing new to capture — every cost code already has a starting snapshot.";
+  });
+
   function updateScrubCardProgress(card, lot, a) {
     var marks = scrubBlob.houses[lot] || {};
     var total = a.allLines.length;
@@ -3079,6 +3120,15 @@
       var card = document.createElement("div");
       card.className = "budget-house-card";
       card.dataset.lot = h.id;
+      function origCell(orig, current) {
+        var currentHtml = current !== null ? fmtAmount(current) : "—";
+        // Only show the "was" line once there's an actual snapshot AND it differs from the
+        // live value -- otherwise every unchanged row would carry redundant clutter.
+        if (orig === undefined || orig === null) return currentHtml;
+        var changed = Math.abs((orig || 0) - (current || 0)) > 0.01;
+        if (!changed) return currentHtml;
+        return currentHtml + '<div class="scrub-orig-value">was ' + (orig !== null ? fmtAmount(orig) : "—") + "</div>";
+      }
       var rowsHtml = a.allLines.map(function (l) {
         var mark = getScrubMark(h.id, l.code);
         var badges = l.flags.map(function (f) { return FLAG_BADGE[f]; }).join(" ");
@@ -3087,8 +3137,8 @@
           "<td>" + escapeHtml(l.code) + "</td>" +
           "<td>" + escapeHtml(l.category || "") + "</td>" +
           "<td>" + escapeHtml(l.label || "") + "</td>" +
-          '<td class="num-col">' + (l.budget !== null ? fmtAmount(l.budget) : "—") + "</td>" +
-          '<td class="num-col">' + (l.actual !== null ? fmtAmount(l.actual) : "—") + "</td>" +
+          '<td class="num-col">' + origCell(mark.origBudget, l.budget) + "</td>" +
+          '<td class="num-col">' + origCell(mark.origActual, l.actual) + "</td>" +
           "<td>" + (badges || "") + "</td>" +
           '<td><div class="scrub-mark-btns">' +
             '<button type="button" class="scrub-mark-btn good' + (mark.status === "good" ? " active" : "") + '" data-mark="good" title="Correct">✓</button>' +
