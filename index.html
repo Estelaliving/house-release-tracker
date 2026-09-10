@@ -837,6 +837,10 @@
   .scrub-changes-panel ul { margin: 0; padding: 0; list-style: none; font-size: 12.5px; }
   .scrub-changes-panel li { padding: 3px 0; }
   .scrub-changes-panel li .code { font-family: "IBM Plex Mono", ui-monospace, monospace; color: var(--text-muted); margin-right: 6px; }
+  .scrub-changes-panel li.removed { color: var(--critical); }
+  .scrub-table tr.removed-row td { opacity: 0.7; }
+  .scrub-table tr.removed-row td:nth-child(1), .scrub-table tr.removed-row td:nth-child(3) { text-decoration: line-through; }
+  .line-flag.removed { background: var(--critical-soft); color: var(--critical); }
   .stage-pill {
     display: inline-block;
     font-family: "IBM Plex Mono", monospace;
@@ -3095,11 +3099,28 @@
   // functions each re-deriving "changed since snapshot" their own way) after finding a
   // real bug where two independent implementations of that comparison disagreed.
   function computeScrubSummary(a, marks) {
-    var total = a.allLines.length;
+    var liveCodes = {};
+    a.allLines.forEach(function (l) { liveCodes[l.code] = true; });
+
+    // A code that was live at snapshot time but is gone from accounting entirely now still
+    // needs a decision (was that deletion correct, or does it need to come back?) -- fold it
+    // into the same review list instead of letting it silently vanish once the API stops
+    // returning it. Its own budget/actual are gone too, so show what the snapshot recorded.
+    var removedLines = Object.keys(marks).filter(function (code) {
+      var m = marks[code];
+      return (m.origBudget !== undefined || m.origActual !== undefined) && !liveCodes[code];
+    }).map(function (code) {
+      var m = marks[code];
+      return { code: code, category: m.origCategory || "", label: m.origLabel || "", budget: null, actual: null, flags: [], removed: true };
+    });
+
+    var displayLines = a.allLines.map(function (l) { return Object.assign({ removed: false }, l); }).concat(removedLines);
+
+    var total = displayLines.length;
     var reviewed = 0, good = 0, bad = 0, hasSnapshot = false;
     var notes = [];
     var changes = [];
-    a.allLines.forEach(function (l) {
+    displayLines.forEach(function (l) {
       var m = marks[l.code];
       if (m && m.status) {
         reviewed++;
@@ -3108,14 +3129,18 @@
       }
       if (m && (m.origBudget !== undefined || m.origActual !== undefined)) {
         hasSnapshot = true;
-        var budgetChanged = m.origBudget !== undefined && Math.abs((m.origBudget || 0) - (l.budget || 0)) > 0.01;
-        var actualChanged = m.origActual !== undefined && Math.abs((m.origActual || 0) - (l.actual || 0)) > 0.01;
-        if (budgetChanged || actualChanged) {
-          changes.push({
-            code: l.code, category: l.category, label: l.label,
-            budgetChanged: budgetChanged, budgetFrom: m.origBudget, budgetTo: l.budget,
-            actualChanged: actualChanged, actualFrom: m.origActual, actualTo: l.actual
-          });
+        if (l.removed) {
+          changes.push({ code: l.code, category: l.category, label: l.label, removed: true, origBudget: m.origBudget, origActual: m.origActual });
+        } else {
+          var budgetChanged = m.origBudget !== undefined && Math.abs((m.origBudget || 0) - (l.budget || 0)) > 0.01;
+          var actualChanged = m.origActual !== undefined && Math.abs((m.origActual || 0) - (l.actual || 0)) > 0.01;
+          if (budgetChanged || actualChanged) {
+            changes.push({
+              code: l.code, category: l.category, label: l.label, removed: false,
+              budgetChanged: budgetChanged, budgetFrom: m.origBudget, budgetTo: l.budget,
+              actualChanged: actualChanged, actualFrom: m.origActual, actualTo: l.actual
+            });
+          }
         }
       }
       if (m && m.note && m.note.trim()) {
@@ -3124,15 +3149,21 @@
     });
     var status = total === 0 ? "empty" : (reviewed === 0 ? "unstarted" : (reviewed >= total ? "done" : "inprogress"));
     var updateStatus = !hasSnapshot ? "nosnapshot" : (changes.length > 0 ? "updated" : "notupdated");
-    return { total: total, reviewed: reviewed, good: good, bad: bad, changedCount: changes.length, changes: changes, notes: notes, status: status, updateStatus: updateStatus };
+    return { total: total, reviewed: reviewed, good: good, bad: bad, changedCount: changes.length, changes: changes, notes: notes, status: status, updateStatus: updateStatus, displayLines: displayLines };
   }
 
   // Explicit "was $X -> now $Y" rundown for every line that moved since the starting
   // snapshot -- the header's "N changed" count and the inline per-row "was" text were too
   // easy to miss; this puts the actual before/after numbers front and center per house.
+  // A removed line shows what it used to be, since there's no current value anymore.
   function scrubChangesPanelHtml(changes) {
     return '<div class="scrub-changes-panel"><h4>Budget Changes (' + changes.length + ")</h4><ul>" +
       changes.map(function (c) {
+        if (c.removed) {
+          return '<li class="removed"><span class="code">' + escapeHtml(c.code) + "</span>" + escapeHtml(c.label || c.category || "") +
+            ": removed from accounting (was Budget " + (c.origBudget !== null && c.origBudget !== undefined ? fmtAmount(c.origBudget) : "—") +
+            ", Actual " + (c.origActual !== null && c.origActual !== undefined ? fmtAmount(c.origActual) : "—") + ")</li>";
+        }
         var parts = [];
         if (c.budgetChanged) parts.push("Budget " + (c.budgetFrom !== null ? fmtAmount(c.budgetFrom) : "—") + " → " + (c.budgetTo !== null ? fmtAmount(c.budgetTo) : "—"));
         if (c.actualChanged) parts.push("Actual " + (c.actualFrom !== null ? fmtAmount(c.actualFrom) : "—") + " → " + (c.actualTo !== null ? fmtAmount(c.actualTo) : "—"));
@@ -3153,7 +3184,10 @@
         if (!scrubBlob.houses[h.id]) scrubBlob.houses[h.id] = {};
         var existing = scrubBlob.houses[h.id][l.code] || {};
         if (existing.origBudget !== undefined) return;
-        scrubBlob.houses[h.id][l.code] = Object.assign({}, existing, { origBudget: l.budget, origActual: l.actual, _ts: Date.now() });
+        // Also keep the category/description as of snapshot time -- if this code later
+        // disappears from accounting entirely, this is the only place its description
+        // still exists (the live API won't have it anymore to look up).
+        scrubBlob.houses[h.id][l.code] = Object.assign({}, existing, { origBudget: l.budget, origActual: l.actual, origCategory: l.category, origLabel: l.label, _ts: Date.now() });
         count++;
       });
     });
@@ -3293,10 +3327,12 @@
         if (!changed) return currentHtml;
         return currentHtml + '<div class="scrub-orig-value">was ' + (orig !== null ? fmtAmount(orig) : "—") + "</div>";
       }
-      var rowsHtml = a.allLines.map(function (l) {
+      var rowsHtml = r.displayLines.map(function (l) {
         var mark = getScrubMark(h.id, l.code);
-        var badges = l.flags.map(function (f) { return FLAG_BADGE[f]; }).join(" ");
-        var rowCls = mark.status === "good" ? "status-good" : (mark.status === "bad" ? "status-bad" : "");
+        var badges = l.removed
+          ? '<span class="line-flag removed">Removed from accounting</span>'
+          : l.flags.map(function (f) { return FLAG_BADGE[f]; }).join(" ");
+        var rowCls = (mark.status === "good" ? "status-good" : (mark.status === "bad" ? "status-bad" : "")) + (l.removed ? " removed-row" : "");
         return '<tr class="' + rowCls + '" data-code="' + escapeHtml(l.code) + '">' +
           "<td>" + escapeHtml(l.code) + "</td>" +
           "<td>" + escapeHtml(l.category || "") + "</td>" +
