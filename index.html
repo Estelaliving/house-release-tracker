@@ -832,6 +832,11 @@
   .scrub-notes-panel li .code { font-family: "IBM Plex Mono", ui-monospace, monospace; color: var(--text-muted); margin-right: 6px; }
   .scrub-notes-panel li.good { color: var(--ok); }
   .scrub-notes-panel li.bad { color: var(--critical); }
+  .scrub-changes-panel { padding: 10px 20px; border-bottom: 1px solid var(--border); background: var(--accent-soft); }
+  .scrub-changes-panel h4 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent); }
+  .scrub-changes-panel ul { margin: 0; padding: 0; list-style: none; font-size: 12.5px; }
+  .scrub-changes-panel li { padding: 3px 0; }
+  .scrub-changes-panel li .code { font-family: "IBM Plex Mono", ui-monospace, monospace; color: var(--text-muted); margin-right: 6px; }
   .stage-pill {
     display: inline-block;
     font-family: "IBM Plex Mono", monospace;
@@ -3091,8 +3096,9 @@
   // real bug where two independent implementations of that comparison disagreed.
   function computeScrubSummary(a, marks) {
     var total = a.allLines.length;
-    var reviewed = 0, good = 0, bad = 0, changedCount = 0, hasSnapshot = false;
+    var reviewed = 0, good = 0, bad = 0, hasSnapshot = false;
     var notes = [];
+    var changes = [];
     a.allLines.forEach(function (l) {
       var m = marks[l.code];
       if (m && m.status) {
@@ -3104,15 +3110,35 @@
         hasSnapshot = true;
         var budgetChanged = m.origBudget !== undefined && Math.abs((m.origBudget || 0) - (l.budget || 0)) > 0.01;
         var actualChanged = m.origActual !== undefined && Math.abs((m.origActual || 0) - (l.actual || 0)) > 0.01;
-        if (budgetChanged || actualChanged) changedCount++;
+        if (budgetChanged || actualChanged) {
+          changes.push({
+            code: l.code, category: l.category, label: l.label,
+            budgetChanged: budgetChanged, budgetFrom: m.origBudget, budgetTo: l.budget,
+            actualChanged: actualChanged, actualFrom: m.origActual, actualTo: l.actual
+          });
+        }
       }
       if (m && m.note && m.note.trim()) {
         notes.push({ code: l.code, category: l.category, label: l.label, note: m.note.trim(), status: m.status || null });
       }
     });
     var status = total === 0 ? "empty" : (reviewed === 0 ? "unstarted" : (reviewed >= total ? "done" : "inprogress"));
-    var updateStatus = !hasSnapshot ? "nosnapshot" : (changedCount > 0 ? "updated" : "notupdated");
-    return { total: total, reviewed: reviewed, good: good, bad: bad, changedCount: changedCount, notes: notes, status: status, updateStatus: updateStatus };
+    var updateStatus = !hasSnapshot ? "nosnapshot" : (changes.length > 0 ? "updated" : "notupdated");
+    return { total: total, reviewed: reviewed, good: good, bad: bad, changedCount: changes.length, changes: changes, notes: notes, status: status, updateStatus: updateStatus };
+  }
+
+  // Explicit "was $X -> now $Y" rundown for every line that moved since the starting
+  // snapshot -- the header's "N changed" count and the inline per-row "was" text were too
+  // easy to miss; this puts the actual before/after numbers front and center per house.
+  function scrubChangesPanelHtml(changes) {
+    return '<div class="scrub-changes-panel"><h4>Budget Changes (' + changes.length + ")</h4><ul>" +
+      changes.map(function (c) {
+        var parts = [];
+        if (c.budgetChanged) parts.push("Budget " + (c.budgetFrom !== null ? fmtAmount(c.budgetFrom) : "—") + " → " + (c.budgetTo !== null ? fmtAmount(c.budgetTo) : "—"));
+        if (c.actualChanged) parts.push("Actual " + (c.actualFrom !== null ? fmtAmount(c.actualFrom) : "—") + " → " + (c.actualTo !== null ? fmtAmount(c.actualTo) : "—"));
+        return '<li><span class="code">' + escapeHtml(c.code) + "</span>" + escapeHtml(c.label || c.category || "") + ": " + parts.join(" · ") + "</li>";
+      }).join("") +
+      "</ul></div>";
   }
 
   // Snapshots today's budget/actual for every cost code across all 92 houses, once -- so
@@ -3184,8 +3210,14 @@
     if (s.notes.length) {
       var freshPanel = document.createElement("div");
       freshPanel.innerHTML = scrubNotesPanelHtml(s.notes);
-      if (existingPanel) existingPanel.replaceWith(freshPanel.firstChild);
-      else card.querySelector(".bh-head").insertAdjacentElement("afterend", freshPanel.firstChild);
+      if (existingPanel) {
+        existingPanel.replaceWith(freshPanel.firstChild);
+      } else {
+        // Changes panel (if present) always comes first -- insert after it, or after the
+        // head if there's no changes panel on this card.
+        var anchor = card.querySelector(".scrub-changes-panel") || card.querySelector(".bh-head");
+        anchor.insertAdjacentElement("afterend", freshPanel.firstChild);
+      }
     } else if (existingPanel) {
       existingPanel.remove();
     }
@@ -3301,6 +3333,7 @@
             "</div>" +
           "</div>" +
         "</div>" +
+        (r.changes.length ? scrubChangesPanelHtml(r.changes) : "") +
         (r.notes.length ? scrubNotesPanelHtml(r.notes) : "") +
         '<div class="all-codes-wrap"><table class="all-codes-table scrub-table"><thead><tr>' +
           "<th>Code</th><th>Category</th><th>Description</th><th class=\"num-col\">Budget</th><th class=\"num-col\">Actual</th><th>Flags</th><th>Mark</th><th>Note</th>" +
