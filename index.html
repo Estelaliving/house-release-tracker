@@ -1036,6 +1036,8 @@
 
     <div class="filter-bar">
       <input type="text" id="scSearch" placeholder="Search address, house number…">
+      <select id="scDev"><option value="">All communities</option></select>
+      <select id="scComp"><option value="">All companies</option></select>
       <select id="scStatus">
         <option value="">All houses</option>
         <option value="unstarted">Not started</option>
@@ -3032,10 +3034,12 @@
   });
 
   var elScSearch = document.getElementById("scSearch");
+  var elScDev = document.getElementById("scDev");
+  var elScComp = document.getElementById("scComp");
   var elScStatus = document.getElementById("scStatus");
   var elScUpdateStatus = document.getElementById("scUpdateStatus");
   var elScSort = document.getElementById("scSort");
-  [elScSearch, elScStatus, elScUpdateStatus, elScSort].forEach(function (el) {
+  [elScSearch, elScDev, elScComp, elScStatus, elScUpdateStatus, elScSort].forEach(function (el) {
     el.addEventListener("input", renderScrubView);
     el.addEventListener("change", renderScrubView);
   });
@@ -3045,6 +3049,29 @@
   // gone through it) are two different questions. "nosnapshot" means Capture Starting
   // Budgets never ran for this house (e.g. it had no budget data loaded yet at the time).
   var SCRUB_UPDATE_LABEL = { updated: "New budget in", notupdated: "Still on old budget", nosnapshot: "No starting snapshot" };
+
+  function ensureScrubFilterOptions(rows) {
+    var devs = {}, comps = {};
+    rows.forEach(function (r) { if (r.dev) devs[r.dev] = true; if (r.comp) comps[r.comp] = true; });
+    var curDev = elScDev.value, curComp = elScComp.value;
+    Array.prototype.slice.call(elScDev.options).forEach(function (o) { if (o.value && !devs[o.value]) o.remove(); });
+    Object.keys(devs).sort().forEach(function (code) {
+      if (!elScDev.querySelector('option[value="' + code + '"]')) {
+        var opt = document.createElement("option");
+        opt.value = code; opt.textContent = DEV_NAMES[code] || code;
+        elScDev.appendChild(opt);
+      }
+    });
+    Array.prototype.slice.call(elScComp.options).forEach(function (o) { if (o.value && !comps[o.value]) o.remove(); });
+    Object.keys(comps).sort().forEach(function (code) {
+      if (!elScComp.querySelector('option[value="' + code + '"]')) {
+        var opt = document.createElement("option");
+        opt.value = code; opt.textContent = "Comp " + code + (companyNames[code] ? " (" + companyNames[code] + ")" : "");
+        elScComp.appendChild(opt);
+      }
+    });
+    elScDev.value = curDev; elScComp.value = curComp;
+  }
 
   function scrubUpdateStatus(h, a, marks) {
     var codes = Object.keys(marks);
@@ -3120,16 +3147,21 @@
     var rows = SCRUB_HOUSES.map(function (h) {
       var a = computeHouseBudgetAnalysis({ id: h.id }, 0);
       var marks = scrubBlob.houses[h.id] || {};
+      var meta = budgetHouseMeta[h.id] || {};
       var total = a.allLines.length;
       var reviewed = a.allLines.filter(function (l) { return marks[l.code] && marks[l.code].status; }).length;
       var bad = a.allLines.filter(function (l) { return marks[l.code] && marks[l.code].status === "bad"; }).length;
       var status = total === 0 ? "empty" : (reviewed === 0 ? "unstarted" : (reviewed >= total ? "done" : "inprogress"));
       var updateStatus = scrubUpdateStatus(h, a, marks);
-      return { h: h, a: a, total: total, reviewed: reviewed, bad: bad, status: status, updateStatus: updateStatus };
+      return { h: h, a: a, dev: meta.dev || "", comp: meta.comp || "", companyName: companyNames[meta.comp] || "", total: total, reviewed: reviewed, bad: bad, status: status, updateStatus: updateStatus };
     });
+    ensureScrubFilterOptions(rows);
 
+    var devFilter = elScDev.value, compFilter = elScComp.value;
     var filtered = rows.filter(function (r) {
       if (q && (r.h.address + " " + r.h.id).toLowerCase().indexOf(q) === -1) return false;
+      if (devFilter && r.dev !== devFilter) return false;
+      if (compFilter && r.comp !== compFilter) return false;
       if (statusFilter && r.status !== statusFilter) return false;
       if (updateStatusFilter && r.updateStatus !== updateStatusFilter) return false;
       return true;
@@ -3161,9 +3193,12 @@
       card.dataset.lot = h.id;
       function origCell(orig, current) {
         var currentHtml = current !== null ? fmtAmount(current) : "—";
-        // Only show the "was" line once there's an actual snapshot AND it differs from the
-        // live value -- otherwise every unchanged row would carry redundant clutter.
-        if (orig === undefined || orig === null) return currentHtml;
+        // "undefined" means never snapshotted -- nothing to compare against. A snapshot of
+        // "null" is a real captured value (no budget/actual existed yet at snapshot time) and
+        // must still be compared -- e.g. null -> a real number is exactly the kind of change
+        // this is supposed to catch. Matches scrubUpdateStatus()'s comparison exactly, so the
+        // house-level badge and this per-line "was" text never disagree.
+        if (orig === undefined) return currentHtml;
         var changed = Math.abs((orig || 0) - (current || 0)) > 0.01;
         if (!changed) return currentHtml;
         return currentHtml + '<div class="scrub-orig-value">was ' + (orig !== null ? fmtAmount(orig) : "—") + "</div>";
@@ -3192,6 +3227,8 @@
           "<div>" +
             '<div class="bh-address">' + escapeHtml(h.address) + "</div>" +
             '<div class="bh-meta"><span>' + escapeHtml(h.id) + "</span>" +
+              "<span>Comp " + escapeHtml(r.comp || "—") + (r.companyName ? " (" + escapeHtml(r.companyName) + ")" : "") + "</span>" +
+              "<span>" + escapeHtml(DEV_NAMES[r.dev] || r.dev || "") + "</span>" +
               (h.cleanDate ? '<span class="scrub-clean-date">Clean date ' + escapeHtml(h.cleanDate) + "</span>" : '<span class="scrub-clean-date">Not scheduled</span>') +
               '<span class="update-status-badge ' + r.updateStatus + '">' + SCRUB_UPDATE_LABEL[r.updateStatus] + "</span>" +
             "</div>" +
