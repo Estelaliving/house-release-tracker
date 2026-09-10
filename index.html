@@ -817,6 +817,10 @@
   .scrub-snapshot-row { display: flex; align-items: center; gap: 14px; margin-top: 14px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
   .scrub-snapshot-status { font-size: 12.5px; color: var(--text-muted); }
   .scrub-orig-value { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+  .update-status-badge { font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .update-status-badge.updated { background: var(--ok-soft); color: var(--ok); }
+  .update-status-badge.notupdated { background: var(--warning-soft); color: var(--warning); }
+  .update-status-badge.nosnapshot { background: var(--surface-2); color: var(--text-muted); }
   .stage-pill {
     display: inline-block;
     font-family: "IBM Plex Mono", monospace;
@@ -1024,6 +1028,10 @@
         <div class="num" id="scrubSumBad">–</div>
         <div class="label">Marked wrong</div>
       </div>
+      <div class="summary-tile tone-warning">
+        <div class="num" id="scrubSumNotUpdated">–</div>
+        <div class="label">Still on old budget</div>
+      </div>
     </div>
 
     <div class="filter-bar">
@@ -1033,6 +1041,12 @@
         <option value="unstarted">Not started</option>
         <option value="inprogress">In progress</option>
         <option value="done">Fully reviewed</option>
+      </select>
+      <select id="scUpdateStatus">
+        <option value="">Any budget status</option>
+        <option value="notupdated">Still on old budget</option>
+        <option value="updated">New budget in (something changed)</option>
+        <option value="nosnapshot">No starting snapshot</option>
       </select>
       <select id="scSort">
         <option value="address">Sort: Address A→Z</option>
@@ -3019,11 +3033,32 @@
 
   var elScSearch = document.getElementById("scSearch");
   var elScStatus = document.getElementById("scStatus");
+  var elScUpdateStatus = document.getElementById("scUpdateStatus");
   var elScSort = document.getElementById("scSort");
-  [elScSearch, elScStatus, elScSort].forEach(function (el) {
+  [elScSearch, elScStatus, elScUpdateStatus, elScSort].forEach(function (el) {
     el.addEventListener("input", renderScrubView);
     el.addEventListener("change", renderScrubView);
   });
+
+  // Whether accounting's own numbers have moved since the starting snapshot -- separate
+  // from review status, since "updated" (the source data changed) and "reviewed" (you've
+  // gone through it) are two different questions. "nosnapshot" means Capture Starting
+  // Budgets never ran for this house (e.g. it had no budget data loaded yet at the time).
+  var SCRUB_UPDATE_LABEL = { updated: "New budget in", notupdated: "Still on old budget", nosnapshot: "No starting snapshot" };
+
+  function scrubUpdateStatus(h, a, marks) {
+    var codes = Object.keys(marks);
+    var hasSnapshot = codes.some(function (c) { return marks[c].origBudget !== undefined || marks[c].origActual !== undefined; });
+    if (!hasSnapshot) return "nosnapshot";
+    var changed = a.allLines.some(function (l) {
+      var m = marks[l.code];
+      if (!m || (m.origBudget === undefined && m.origActual === undefined)) return false;
+      var budgetChanged = m.origBudget !== undefined && Math.abs((m.origBudget || 0) - (l.budget || 0)) > 0.01;
+      var actualChanged = m.origActual !== undefined && Math.abs((m.origActual || 0) - (l.actual || 0)) > 0.01;
+      return budgetChanged || actualChanged;
+    });
+    return changed ? "updated" : "notupdated";
+  }
 
   // Snapshots today's budget/actual for every cost code across all 92 houses, once -- so
   // once the accounting system gets updated, the Scrub tab can still show what it used to
@@ -3079,6 +3114,7 @@
     }
     var q = elScSearch.value.trim().toLowerCase();
     var statusFilter = elScStatus.value;
+    var updateStatusFilter = elScUpdateStatus.value;
     var sortMode = elScSort.value;
 
     var rows = SCRUB_HOUSES.map(function (h) {
@@ -3088,12 +3124,14 @@
       var reviewed = a.allLines.filter(function (l) { return marks[l.code] && marks[l.code].status; }).length;
       var bad = a.allLines.filter(function (l) { return marks[l.code] && marks[l.code].status === "bad"; }).length;
       var status = total === 0 ? "empty" : (reviewed === 0 ? "unstarted" : (reviewed >= total ? "done" : "inprogress"));
-      return { h: h, a: a, total: total, reviewed: reviewed, bad: bad, status: status };
+      var updateStatus = scrubUpdateStatus(h, a, marks);
+      return { h: h, a: a, total: total, reviewed: reviewed, bad: bad, status: status, updateStatus: updateStatus };
     });
 
     var filtered = rows.filter(function (r) {
       if (q && (r.h.address + " " + r.h.id).toLowerCase().indexOf(q) === -1) return false;
       if (statusFilter && r.status !== statusFilter) return false;
+      if (updateStatusFilter && r.updateStatus !== updateStatusFilter) return false;
       return true;
     });
     filtered.sort(function (r1, r2) {
@@ -3106,6 +3144,7 @@
     document.getElementById("scrubSumHousesDone").textContent = housesDone + " / " + SCRUB_HOUSES.length;
     document.getElementById("scrubSumLinesDone").textContent = rows.reduce(function (s, r) { return s + r.reviewed; }, 0);
     document.getElementById("scrubSumBad").textContent = rows.reduce(function (s, r) { return s + r.bad; }, 0);
+    document.getElementById("scrubSumNotUpdated").textContent = rows.filter(function (r) { return r.updateStatus !== "updated"; }).length + " / " + SCRUB_HOUSES.length;
     document.getElementById("scFilterCount").textContent = filtered.length + " / " + SCRUB_HOUSES.length + " houses";
 
     container.innerHTML = "";
@@ -3154,6 +3193,7 @@
             '<div class="bh-address">' + escapeHtml(h.address) + "</div>" +
             '<div class="bh-meta"><span>' + escapeHtml(h.id) + "</span>" +
               (h.cleanDate ? '<span class="scrub-clean-date">Clean date ' + escapeHtml(h.cleanDate) + "</span>" : '<span class="scrub-clean-date">Not scheduled</span>') +
+              '<span class="update-status-badge ' + r.updateStatus + '">' + SCRUB_UPDATE_LABEL[r.updateStatus] + "</span>" +
             "</div>" +
           "</div>" +
           '<div class="scrub-progress-wrap">' +
