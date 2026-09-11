@@ -1345,6 +1345,12 @@
   var budgetIndex = {};
   var houseBudgetTotals = {}; // lot -> summed budgetamount across its lines
   var budgetHouseMeta = {}; // housenumber -> accounting's own address/dev/comp/model
+  // Cost code -> category/description, learned from whichever house happened to have it
+  // first. Cost code descriptions are standardized by the accounting system, not
+  // house-specific, so this is a reliable fallback for a house whose own copy of that
+  // code has since been deleted -- its description doesn't need to have been captured by
+  // that specific house's own snapshot to still be known.
+  var costCodeReference = {};
   var budgetDataLoaded = false;
 
   function budgetInfoHtml(lot, item) {
@@ -2303,6 +2309,7 @@
         var costType = parseInt(row.categorycode, 10) >= 600 ? "soft" : "direct";
         idx[lot][code] = { budget: budget, actual: actual, label: row.desccost || row.desccat || "", category: row.desccat || "", costcodeNum: row.costcode, costType: costType };
         if (budget !== null) totals[lot] = (totals[lot] || 0) + budget;
+        if (!costCodeReference[code]) costCodeReference[code] = { category: row.desccat || "", label: row.desccost || row.desccat || "" };
         if (!houseMeta[lot]) {
           houseMeta[lot] = { address: row.address1 || lot, dev: row.developmentcode || "", comp: row.companycode || "", model: row.modelcode || "", elevCode: row.elevationcode || "" };
         }
@@ -3111,7 +3118,8 @@
       return (m.origBudget !== undefined || m.origActual !== undefined) && !liveCodes[code];
     }).map(function (code) {
       var m = marks[code];
-      return { code: code, category: m.origCategory || "", label: m.origLabel || "", budget: null, actual: null, flags: [], removed: true };
+      var ref = costCodeReference[code] || {};
+      return { code: code, category: m.origCategory || ref.category || "", label: m.origLabel || ref.label || "", budget: null, actual: null, flags: [], removed: true };
     });
 
     var displayLines = a.allLines.map(function (l) { return Object.assign({ removed: false }, l); }).concat(removedLines);
