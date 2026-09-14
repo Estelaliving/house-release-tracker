@@ -87,6 +87,10 @@
     margin: 0 auto;
     padding: 36px 20px 80px;
   }
+  /* Scrub's cost-code table has ten columns (added Original/Final Budget/Actual) --
+     wider than the other two tabs need, so only this one gets a wider container instead
+     of forcing horizontal scroll on a screen with room to spare. */
+  .wrap.view-wide { max-width: 1600px; }
 
   .eyebrow {
     font-family: "Barlow Condensed", ui-sans-serif, sans-serif;
@@ -3066,6 +3070,7 @@
       viewReleaseEl.style.display = view === "release" ? "" : "none";
       viewBudgetEl.style.display = view === "budget" ? "" : "none";
       viewScrubEl.style.display = view === "scrub" ? "" : "none";
+      document.querySelector(".wrap").classList.toggle("view-wide", view === "scrub");
       if (view === "budget") renderBudgetView();
       if (view === "scrub") renderScrubView();
     });
