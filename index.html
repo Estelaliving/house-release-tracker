@@ -3316,7 +3316,7 @@
       var marks = scrubBlob.houses[h.id] || {};
       var meta = budgetHouseMeta[h.id] || {};
       var s = computeScrubSummary(a, marks);
-      return Object.assign({ h: h, a: a, dev: meta.dev || "", comp: meta.comp || "", companyName: companyNames[meta.comp] || "" }, s);
+      return Object.assign({ h: h, a: a, dev: meta.dev || "", comp: meta.comp || "", companyName: companyNames[meta.comp] || "", model: meta.model || "", elevCode: meta.elevCode || "" }, s);
     });
     ensureScrubFilterOptions(rows);
 
@@ -3395,6 +3395,7 @@
             '<div class="bh-meta"><span>' + escapeHtml(h.id) + "</span>" +
               "<span>Comp " + escapeHtml(r.comp || "—") + (r.companyName ? " (" + escapeHtml(r.companyName) + ")" : "") + "</span>" +
               "<span>" + escapeHtml(DEV_NAMES[r.dev] || r.dev || "") + "</span>" +
+              "<span>" + escapeHtml(r.model || "—") + (r.elevCode ? "/" + escapeHtml(r.elevCode) : "") + "</span>" +
               (h.cleanDate ? '<span class="scrub-clean-date">Clean date ' + escapeHtml(h.cleanDate) + "</span>" : '<span class="scrub-clean-date">Not scheduled</span>') +
               '<span class="update-status-badge ' + r.updateStatus + '">' + SCRUB_UPDATE_LABEL[r.updateStatus] + "</span>" +
             "</div>" +
