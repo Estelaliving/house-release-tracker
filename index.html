@@ -147,6 +147,8 @@
   .summary-tile.tone-warning .num { color: var(--warning); }
   .summary-tile.tone-accent .num { color: var(--accent); }
   .summary-tile.tone-nobudget .num { color: var(--nobudget); }
+  .summary-tile.clickable { cursor: pointer; transition: border-color 0.1s, box-shadow 0.1s; }
+  .summary-tile.clickable:hover { border-color: var(--accent); box-shadow: var(--shadow), 0 0 0 1px var(--accent); }
   .nobudget-badge {
     display: inline-block;
     font-size: 11px;
@@ -1043,9 +1045,13 @@
     </div>
 
     <div class="summary-row">
-      <div class="summary-tile tone-accent">
+      <div class="summary-tile tone-accent clickable" id="scrubTileDone">
         <div class="num" id="scrubSumHousesDone">–</div>
         <div class="label">Houses fully scrubbed</div>
+      </div>
+      <div class="summary-tile clickable" id="scrubTileInProgress">
+        <div class="num" id="scrubSumInProgress">–</div>
+        <div class="label">Started, not finished</div>
       </div>
       <div class="summary-tile">
         <div class="num" id="scrubSumLinesDone">–</div>
@@ -1055,7 +1061,7 @@
         <div class="num" id="scrubSumBad">–</div>
         <div class="label">Marked wrong</div>
       </div>
-      <div class="summary-tile tone-warning">
+      <div class="summary-tile tone-warning clickable" id="scrubTileNotUpdated">
         <div class="num" id="scrubSumNotUpdated">–</div>
         <div class="label">Still on old budget</div>
       </div>
@@ -1081,9 +1087,8 @@
       </select>
       <select id="scUpdateStatus">
         <option value="">Any budget status</option>
-        <option value="notupdated">Still on old budget</option>
+        <option value="notupdated">Still on old budget (incl. no snapshot)</option>
         <option value="updated">New budget in (something changed)</option>
-        <option value="nosnapshot">No starting snapshot</option>
       </select>
       <select id="scSort">
         <option value="address">Sort: Address A→Z</option>
@@ -3087,6 +3092,21 @@
     el.addEventListener("change", renderScrubView);
   });
 
+  // Clicking a summary tile jumps straight to exactly what it counts -- clears every other
+  // filter first so the list you land on always matches the number you clicked.
+  function scrubQuickFilter(statusVal, updateStatusVal) {
+    elScSearch.value = "";
+    elScDev.value = "";
+    elScComp.value = "";
+    elScStatus.value = statusVal || "";
+    elScUpdateStatus.value = updateStatusVal || "";
+    renderScrubView();
+    document.getElementById("scStatus").closest(".filter-bar").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  document.getElementById("scrubTileDone").addEventListener("click", function () { scrubQuickFilter("done", ""); });
+  document.getElementById("scrubTileInProgress").addEventListener("click", function () { scrubQuickFilter("inprogress", ""); });
+  document.getElementById("scrubTileNotUpdated").addEventListener("click", function () { scrubQuickFilter("", "notupdated"); });
+
   // Whether accounting's own numbers have moved since the starting snapshot -- separate
   // from review status, since "updated" (the source data changed) and "reviewed" (you've
   // gone through it) are two different questions. "nosnapshot" means Capture Starting
@@ -3326,7 +3346,11 @@
       if (devFilter && r.dev !== devFilter) return false;
       if (compFilter && r.comp !== compFilter) return false;
       if (statusFilter && r.status !== statusFilter) return false;
-      if (updateStatusFilter && r.updateStatus !== updateStatusFilter) return false;
+      // "notupdated" here means the same thing the "Still on old budget" tile counts --
+      // anything that isn't "updated", which includes "nosnapshot" too (a house never
+      // snapshotted has no more evidence of a new budget than one confirmed unchanged).
+      if (updateStatusFilter === "notupdated" && r.updateStatus === "updated") return false;
+      if (updateStatusFilter === "updated" && r.updateStatus !== "updated") return false;
       return true;
     });
     filtered.sort(function (r1, r2) {
@@ -3337,6 +3361,7 @@
 
     var housesDone = rows.filter(function (r) { return r.status === "done"; }).length;
     document.getElementById("scrubSumHousesDone").textContent = housesDone + " / " + SCRUB_HOUSES.length;
+    document.getElementById("scrubSumInProgress").textContent = rows.filter(function (r) { return r.status === "inprogress"; }).length;
     document.getElementById("scrubSumLinesDone").textContent = rows.reduce(function (s, r) { return s + r.reviewed; }, 0);
     document.getElementById("scrubSumBad").textContent = rows.reduce(function (s, r) { return s + r.bad; }, 0);
     document.getElementById("scrubSumNotUpdated").textContent = rows.filter(function (r) { return r.updateStatus !== "updated"; }).length + " / " + SCRUB_HOUSES.length;
