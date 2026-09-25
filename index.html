@@ -149,6 +149,7 @@
   .summary-tile.tone-nobudget .num { color: var(--nobudget); }
   .summary-tile.clickable { cursor: pointer; transition: border-color 0.1s, box-shadow 0.1s; }
   .summary-tile.clickable:hover { border-color: var(--accent); box-shadow: var(--shadow), 0 0 0 1px var(--accent); }
+  .view-tabs.ch-subtabs { margin-top: 4px; margin-bottom: 14px; }
   .all-codes-table tr.changes-row { cursor: pointer; }
   .all-codes-table tr.changes-row:hover { background: var(--surface-2); }
   .all-codes-table tr.changes-detail-row td { background: var(--bg); white-space: normal; }
@@ -1108,38 +1109,105 @@
   </div>
 
   <div id="viewChanges" style="display:none">
-    <p class="subtitle">Every budget change across the 92 scrub houses above a threshold, grouped by cost code — so you can see whether it's the same handful of codes moving every time, or scattered one-offs.</p>
+    <p class="subtitle">Every budget change across the 92 scrub houses — grouped by cost code, by house-level increases/decreases, and unbudgeted change-order costs.</p>
 
-    <div class="filter-bar">
-      <input type="number" id="chThreshold" value="500" min="0" step="50" placeholder="Min $ change">
-      <select id="chSort">
-        <option value="houses">Sort: Most houses affected first</option>
-        <option value="total">Sort: Total $ moved, high→low</option>
-        <option value="avg">Sort: Average $ change, high→low</option>
-        <option value="code">Sort: Cost code A→Z</option>
-      </select>
-      <span class="filter-count" id="chFilterCount"></span>
+    <div class="view-tabs ch-subtabs" id="chSubTabs">
+      <button class="view-tab active" data-chview="bycode" type="button">By Cost Code</button>
+      <button class="view-tab" data-chview="increased" type="button">Houses Increased</button>
+      <button class="view-tab" data-chview="decreased" type="button">Houses Decreased</button>
+      <button class="view-tab" data-chview="changeorders" type="button">Unbudgeted Change Orders</button>
     </div>
 
-    <div class="summary-row">
-      <div class="summary-tile tone-accent">
-        <div class="num" id="chSumCodes">–</div>
-        <div class="label">Distinct cost codes affected</div>
+    <div id="chViewBycode">
+      <div class="filter-bar">
+        <input type="number" id="chThreshold" value="500" min="0" step="50" placeholder="Min $ change">
+        <select id="chSort">
+          <option value="houses">Sort: Most houses affected first</option>
+          <option value="total">Sort: Total $ moved, high→low</option>
+          <option value="avg">Sort: Average $ change, high→low</option>
+          <option value="code">Sort: Cost code A→Z</option>
+        </select>
+        <span class="filter-count" id="chFilterCount"></span>
       </div>
-      <div class="summary-tile">
-        <div class="num" id="chSumInstances">–</div>
-        <div class="label">Total changes over threshold</div>
+
+      <div class="summary-row">
+        <div class="summary-tile tone-accent">
+          <div class="num" id="chSumCodes">–</div>
+          <div class="label">Distinct cost codes affected</div>
+        </div>
+        <div class="summary-tile">
+          <div class="num" id="chSumInstances">–</div>
+          <div class="label">Total changes over threshold</div>
+        </div>
+        <div class="summary-tile tone-critical">
+          <div class="num" id="chSumTotalMoved">–</div>
+          <div class="label">Total $ moved</div>
+        </div>
       </div>
-      <div class="summary-tile tone-critical">
-        <div class="num" id="chSumTotalMoved">–</div>
-        <div class="label">Total $ moved</div>
-      </div>
+
+      <div class="all-codes-wrap"><table class="all-codes-table" id="changesTable"><thead><tr>
+        <th>Code</th><th>Category</th><th>Description</th>
+        <th class="num-col">Houses Affected</th><th class="num-col">Total $ Moved</th><th class="num-col">Avg $ Change</th>
+      </tr></thead><tbody id="changesTableBody"></tbody></table></div>
     </div>
 
-    <div class="all-codes-wrap"><table class="all-codes-table" id="changesTable"><thead><tr>
-      <th>Code</th><th>Category</th><th>Description</th>
-      <th class="num-col">Houses Affected</th><th class="num-col">Total $ Moved</th><th class="num-col">Avg $ Change</th>
-    </tr></thead><tbody id="changesTableBody"></tbody></table></div>
+    <div id="chViewIncreased" style="display:none">
+      <p class="subtitle">Houses where the total captured-original vs. current budget went up.</p>
+      <div class="summary-row">
+        <div class="summary-tile tone-critical">
+          <div class="num" id="chIncCount">–</div>
+          <div class="label">Houses with increased total budget</div>
+        </div>
+        <div class="summary-tile tone-critical">
+          <div class="num" id="chIncTotal">–</div>
+          <div class="label">Total $ increased</div>
+        </div>
+      </div>
+      <div class="all-codes-wrap"><table class="all-codes-table" id="chIncreasedTable"><thead><tr>
+        <th>House</th><th>Address</th><th class="num-col">Original Total</th><th class="num-col">Final Total</th><th class="num-col">Change</th>
+      </tr></thead><tbody id="chIncreasedBody"></tbody></table></div>
+    </div>
+
+    <div id="chViewDecreased" style="display:none">
+      <p class="subtitle">Houses where the total captured-original vs. current budget went down.</p>
+      <div class="summary-row">
+        <div class="summary-tile tone-accent">
+          <div class="num" id="chDecCount">–</div>
+          <div class="label">Houses with decreased total budget</div>
+        </div>
+        <div class="summary-tile tone-accent">
+          <div class="num" id="chDecTotal">–</div>
+          <div class="label">Total $ decreased</div>
+        </div>
+      </div>
+      <div class="all-codes-wrap"><table class="all-codes-table" id="chDecreasedTable"><thead><tr>
+        <th>House</th><th>Address</th><th class="num-col">Original Total</th><th class="num-col">Final Total</th><th class="num-col">Change</th>
+      </tr></thead><tbody id="chDecreasedBody"></tbody></table></div>
+    </div>
+
+    <div id="chViewChangeOrders" style="display:none">
+      <p class="subtitle">Lines posted under a change-order/variance reason code (costcode 60–79: Site Condition, Weather, Sub Error, Price Variance, etc. — includes fill dirt's 230-6X) that already have a real actual cost but no budget entered yet.</p>
+      <div class="filter-bar">
+        <input type="text" id="chcoSearch" placeholder="Filter by house, code, or description...">
+      </div>
+      <div class="summary-row">
+        <div class="summary-tile tone-nobudget">
+          <div class="num" id="chcoCount">–</div>
+          <div class="label">Unbudgeted change-order lines</div>
+        </div>
+        <div class="summary-tile tone-critical">
+          <div class="num" id="chcoTotal">–</div>
+          <div class="label">Total $ unbudgeted</div>
+        </div>
+        <div class="summary-tile">
+          <div class="num" id="chcoHouses">–</div>
+          <div class="label">Houses affected</div>
+        </div>
+      </div>
+      <div class="all-codes-wrap"><table class="all-codes-table" id="chChangeOrdersTable"><thead><tr>
+        <th>House</th><th>Address</th><th>Code</th><th>Category</th><th>Description</th><th class="num-col">Actual $</th>
+      </tr></thead><tbody id="chChangeOrdersBody"></tbody></table></div>
+    </div>
   </div>
 </div>
 
@@ -3118,10 +3186,27 @@
       viewBudgetEl.style.display = view === "budget" ? "" : "none";
       viewScrubEl.style.display = view === "scrub" ? "" : "none";
       viewChangesEl.style.display = view === "changes" ? "" : "none";
-      document.querySelector(".wrap").classList.toggle("view-wide", view === "scrub");
+      document.querySelector(".wrap").classList.toggle("view-wide", view === "scrub" || view === "changes");
       if (view === "budget") renderBudgetView();
       if (view === "scrub") renderScrubView();
       if (view === "changes") renderChangesReportView();
+    });
+  });
+
+  // ---- Changes Report sub-tabs (By Cost Code <-> Houses Increased <-> Houses Decreased <-> Unbudgeted Change Orders) ----
+  var chSubtabEls = document.querySelectorAll("#chSubTabs .view-tab");
+  var chSubviews = {
+    bycode: document.getElementById("chViewBycode"),
+    increased: document.getElementById("chViewIncreased"),
+    decreased: document.getElementById("chViewDecreased"),
+    changeorders: document.getElementById("chViewChangeOrders")
+  };
+  Array.prototype.forEach.call(chSubtabEls, function (btn) {
+    btn.addEventListener("click", function () {
+      Array.prototype.forEach.call(chSubtabEls, function (b) { b.classList.remove("active"); });
+      btn.classList.add("active");
+      var v = btn.dataset.chview;
+      Object.keys(chSubviews).forEach(function (k) { chSubviews[k].style.display = k === v ? "" : "none"; });
     });
   });
 
@@ -3558,11 +3643,120 @@
     });
   }
 
+  // Total captured-original vs. current budget per house (only houses with at least one
+  // snapshot -- reuses computeScrubSummary's own totals so this can never disagree with
+  // what the Scrub tab's house-card totals show).
+  function computeHouseBudgetDeltas() {
+    var rows = [];
+    SCRUB_HOUSES.forEach(function (h) {
+      var a = computeHouseBudgetAnalysis({ id: h.id }, 0);
+      var marks = scrubBlob.houses[h.id] || {};
+      var s = computeScrubSummary(a, marks);
+      if (s.updateStatus === "nosnapshot") return;
+      rows.push({ house: h.id, address: h.address, orig: s.totalOrigBudget, final: s.totalFinalBudget, delta: s.totalFinalBudget - s.totalOrigBudget });
+    });
+    return rows;
+  }
+
+  function renderHouseDeltaTables() {
+    var rows = computeHouseBudgetDeltas();
+    var increased = rows.filter(function (r) { return r.delta > 0.01; }).sort(function (a, b) { return b.delta - a.delta; });
+    var decreased = rows.filter(function (r) { return r.delta < -0.01; }).sort(function (a, b) { return a.delta - b.delta; });
+
+    document.getElementById("chIncCount").textContent = increased.length;
+    document.getElementById("chIncTotal").textContent = fmtAmount(increased.reduce(function (s, r) { return s + r.delta; }, 0)) || "$0.00";
+    var incBody = document.getElementById("chIncreasedBody");
+    incBody.innerHTML = "";
+    if (!increased.length) {
+      incBody.innerHTML = '<tr><td colspan="5" style="color:var(--text-muted)">No houses with an increased total budget yet.</td></tr>';
+    } else {
+      increased.forEach(function (r) {
+        var tr = document.createElement("tr");
+        tr.innerHTML = "<td>" + escapeHtml(r.house) + "</td>" + "<td>" + escapeHtml(r.address) + "</td>" +
+          '<td class="num-col">' + fmtAmount(r.orig) + "</td>" + '<td class="num-col">' + fmtAmount(r.final) + "</td>" +
+          '<td class="num-col" style="color:var(--critical)">+' + fmtAmount(r.delta) + "</td>";
+        incBody.appendChild(tr);
+      });
+    }
+
+    document.getElementById("chDecCount").textContent = decreased.length;
+    document.getElementById("chDecTotal").textContent = fmtAmount(decreased.reduce(function (s, r) { return s + r.delta; }, 0)) || "$0.00";
+    var decBody = document.getElementById("chDecreasedBody");
+    decBody.innerHTML = "";
+    if (!decreased.length) {
+      decBody.innerHTML = '<tr><td colspan="5" style="color:var(--text-muted)">No houses with a decreased total budget yet.</td></tr>';
+    } else {
+      decreased.forEach(function (r) {
+        var tr = document.createElement("tr");
+        tr.innerHTML = "<td>" + escapeHtml(r.house) + "</td>" + "<td>" + escapeHtml(r.address) + "</td>" +
+          '<td class="num-col">' + fmtAmount(r.orig) + "</td>" + '<td class="num-col">' + fmtAmount(r.final) + "</td>" +
+          '<td class="num-col" style="color:var(--ok)">' + fmtAmount(r.delta) + "</td>";
+        decBody.appendChild(tr);
+      });
+    }
+  }
+
+  // Costcode 60-79 is the accounting system's own "change order / variance reason" range
+  // (Site Condition, Weather, Sub Error, Price Variance, etc.) across every trade, not just
+  // Earthwork's 230-6X fill-dirt codes -- confirmed against the live housebudget rows. A line
+  // here with a real actual but no budget entered is a change-order cost nobody has budgeted for yet.
+  function computeUnbudgetedChangeOrders() {
+    var rows = [];
+    SCRUB_HOUSES.forEach(function (h) {
+      var a = computeHouseBudgetAnalysis({ id: h.id }, 0);
+      a.allLines.forEach(function (l) {
+        var n = parseInt(l.costcodeNum, 10);
+        if (isNaN(n) || n < 60 || n > 79) return;
+        if (l.budget !== null || l.actual === null) return;
+        rows.push({ house: h.id, address: h.address, code: l.code, category: l.category, label: l.label, actual: l.actual });
+      });
+    });
+    return rows;
+  }
+
+  function renderChangeOrdersTable() {
+    var rows = computeUnbudgetedChangeOrders();
+    var q = (document.getElementById("chcoSearch").value || "").toLowerCase().trim();
+    if (q) {
+      rows = rows.filter(function (r) {
+        return r.house.toLowerCase().indexOf(q) !== -1 || r.address.toLowerCase().indexOf(q) !== -1 ||
+          r.code.toLowerCase().indexOf(q) !== -1 || (r.category || "").toLowerCase().indexOf(q) !== -1 ||
+          (r.label || "").toLowerCase().indexOf(q) !== -1;
+      });
+    }
+    rows.sort(function (a, b) { return Math.abs(b.actual) - Math.abs(a.actual); });
+
+    var houseSet = {}, total = 0;
+    rows.forEach(function (r) { houseSet[r.house] = true; total += r.actual; });
+
+    document.getElementById("chcoCount").textContent = rows.length;
+    document.getElementById("chcoTotal").textContent = fmtAmount(total) || "$0.00";
+    document.getElementById("chcoHouses").textContent = Object.keys(houseSet).length;
+
+    var body = document.getElementById("chChangeOrdersBody");
+    body.innerHTML = "";
+    if (!rows.length) {
+      body.innerHTML = '<tr><td colspan="6" style="color:var(--text-muted)">No unbudgeted change-order lines found.</td></tr>';
+      return;
+    }
+    rows.forEach(function (r) {
+      var tr = document.createElement("tr");
+      tr.innerHTML = "<td>" + escapeHtml(r.house) + "</td>" + "<td>" + escapeHtml(r.address) + "</td>" +
+        "<td>" + escapeHtml(r.code) + "</td>" + "<td>" + escapeHtml(r.category || "") + "</td>" +
+        "<td>" + escapeHtml(r.label || "") + "</td>" + '<td class="num-col">' + fmtAmount(r.actual) + "</td>";
+      body.appendChild(tr);
+    });
+  }
+
   function renderChangesReportView() {
     var tbody = document.getElementById("changesTableBody");
     if (!tbody) return;
     if (!budgetDataLoaded) {
       tbody.innerHTML = '<tr><td colspan="6" style="color:var(--text-muted)">Loading…</td></tr>';
+      ["chIncreasedBody", "chDecreasedBody", "chChangeOrdersBody"].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.innerHTML = '<tr><td colspan="6" style="color:var(--text-muted)">Loading…</td></tr>';
+      });
       return;
     }
     var threshold = parseFloat(document.getElementById("chThreshold").value);
@@ -3614,12 +3808,16 @@
       });
       tbody.appendChild(tr);
     });
+
+    renderHouseDeltaTables();
+    renderChangeOrdersTable();
   }
 
   [document.getElementById("chThreshold"), document.getElementById("chSort")].forEach(function (el) {
     el.addEventListener("input", renderChangesReportView);
     el.addEventListener("change", renderChangesReportView);
   });
+  document.getElementById("chcoSearch").addEventListener("input", renderChangeOrdersTable);
 
   renderAlertsPanel();
   renderBatchWorklist();
