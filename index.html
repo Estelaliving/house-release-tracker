@@ -149,6 +149,11 @@
   .summary-tile.tone-nobudget .num { color: var(--nobudget); }
   .summary-tile.clickable { cursor: pointer; transition: border-color 0.1s, box-shadow 0.1s; }
   .summary-tile.clickable:hover { border-color: var(--accent); box-shadow: var(--shadow), 0 0 0 1px var(--accent); }
+  .all-codes-table tr.changes-row { cursor: pointer; }
+  .all-codes-table tr.changes-row:hover { background: var(--surface-2); }
+  .all-codes-table tr.changes-detail-row td { background: var(--bg); white-space: normal; }
+  .all-codes-table tr.changes-detail-row .budget-detail-group ul { max-height: 320px; overflow-y: auto; }
+  .all-codes-table tr.changes-detail-row .budget-detail-group li { white-space: normal; padding: 4px 0; }
   .nobudget-badge {
     display: inline-block;
     font-size: 11px;
@@ -889,6 +894,7 @@
     <button class="view-tab active" data-view="release" type="button">Release Tracker</button>
     <button class="view-tab" data-view="budget" type="button">Budget vs Actual</button>
     <button class="view-tab" data-view="scrub" type="button">Scrub</button>
+    <button class="view-tab" data-view="changes" type="button">Changes Report</button>
   </div>
 
   <div id="viewRelease">
@@ -1099,6 +1105,41 @@
     </div>
 
     <div class="budget-cards" id="scrubCards"></div>
+  </div>
+
+  <div id="viewChanges" style="display:none">
+    <p class="subtitle">Every budget change across the 92 scrub houses above a threshold, grouped by cost code — so you can see whether it's the same handful of codes moving every time, or scattered one-offs.</p>
+
+    <div class="filter-bar">
+      <input type="number" id="chThreshold" value="500" min="0" step="50" placeholder="Min $ change">
+      <select id="chSort">
+        <option value="houses">Sort: Most houses affected first</option>
+        <option value="total">Sort: Total $ moved, high→low</option>
+        <option value="avg">Sort: Average $ change, high→low</option>
+        <option value="code">Sort: Cost code A→Z</option>
+      </select>
+      <span class="filter-count" id="chFilterCount"></span>
+    </div>
+
+    <div class="summary-row">
+      <div class="summary-tile tone-accent">
+        <div class="num" id="chSumCodes">–</div>
+        <div class="label">Distinct cost codes affected</div>
+      </div>
+      <div class="summary-tile">
+        <div class="num" id="chSumInstances">–</div>
+        <div class="label">Total changes over threshold</div>
+      </div>
+      <div class="summary-tile tone-critical">
+        <div class="num" id="chSumTotalMoved">–</div>
+        <div class="label">Total $ moved</div>
+      </div>
+    </div>
+
+    <div class="all-codes-wrap"><table class="all-codes-table" id="changesTable"><thead><tr>
+      <th>Code</th><th>Category</th><th>Description</th>
+      <th class="num-col">Houses Affected</th><th class="num-col">Total $ Moved</th><th class="num-col">Avg $ Change</th>
+    </tr></thead><tbody id="changesTableBody"></tbody></table></div>
   </div>
 </div>
 
@@ -3067,6 +3108,7 @@
   var viewReleaseEl = document.getElementById("viewRelease");
   var viewBudgetEl = document.getElementById("viewBudget");
   var viewScrubEl = document.getElementById("viewScrub");
+  var viewChangesEl = document.getElementById("viewChanges");
   Array.prototype.forEach.call(document.querySelectorAll(".view-tab"), function (btn) {
     btn.addEventListener("click", function () {
       Array.prototype.forEach.call(document.querySelectorAll(".view-tab"), function (b) { b.classList.remove("active"); });
@@ -3075,9 +3117,11 @@
       viewReleaseEl.style.display = view === "release" ? "" : "none";
       viewBudgetEl.style.display = view === "budget" ? "" : "none";
       viewScrubEl.style.display = view === "scrub" ? "" : "none";
+      viewChangesEl.style.display = view === "changes" ? "" : "none";
       document.querySelector(".wrap").classList.toggle("view-wide", view === "scrub");
       if (view === "budget") renderBudgetView();
       if (view === "scrub") renderScrubView();
+      if (view === "changes") renderChangesReportView();
     });
   });
 
@@ -3479,6 +3523,103 @@
       container.appendChild(card);
     });
   }
+
+  // Groups every budget change across all 92 scrub houses by cost code, so a code that
+  // moves by a material amount in house after house stands out from one-off edits. Only
+  // budget (not actual) per the ask; a removed line still counts (its budget went to
+  // nothing, which is exactly the kind of change worth spotting a pattern in).
+  function computeChangesReport(threshold) {
+    var byCode = {};
+    SCRUB_HOUSES.forEach(function (h) {
+      var a = computeHouseBudgetAnalysis({ id: h.id }, 0);
+      var marks = scrubBlob.houses[h.id] || {};
+      var s = computeScrubSummary(a, marks);
+      s.changes.forEach(function (c) {
+        var diff = null;
+        if (c.removed) {
+          if (c.origBudget !== null && c.origBudget !== undefined) diff = -c.origBudget;
+        } else if (c.budgetChanged) {
+          diff = c.budgetTo - c.budgetFrom;
+        }
+        if (diff === null || Math.abs(diff) < threshold) return;
+        if (!byCode[c.code]) byCode[c.code] = { code: c.code, category: c.category, label: c.label, instances: [] };
+        byCode[c.code].instances.push({
+          house: h.id, address: h.address,
+          from: c.removed ? c.origBudget : c.budgetFrom,
+          to: c.removed ? null : c.budgetTo,
+          diff: diff
+        });
+      });
+    });
+    return Object.keys(byCode).map(function (code) {
+      var entry = byCode[code];
+      var totalAbs = entry.instances.reduce(function (sum, i) { return sum + Math.abs(i.diff); }, 0);
+      return Object.assign(entry, { housesAffected: entry.instances.length, totalMoved: totalAbs, avgChange: totalAbs / entry.instances.length });
+    });
+  }
+
+  function renderChangesReportView() {
+    var tbody = document.getElementById("changesTableBody");
+    if (!tbody) return;
+    if (!budgetDataLoaded) {
+      tbody.innerHTML = '<tr><td colspan="6" style="color:var(--text-muted)">Loading…</td></tr>';
+      return;
+    }
+    var threshold = parseFloat(document.getElementById("chThreshold").value);
+    if (isNaN(threshold) || threshold < 0) threshold = 0;
+    var sortMode = document.getElementById("chSort").value;
+    var rows = computeChangesReport(threshold);
+    rows.sort(function (a, b) {
+      if (sortMode === "total") return b.totalMoved - a.totalMoved;
+      if (sortMode === "avg") return b.avgChange - a.avgChange;
+      if (sortMode === "code") return a.code.localeCompare(b.code);
+      return b.housesAffected - a.housesAffected; // default: "houses"
+    });
+
+    document.getElementById("chSumCodes").textContent = rows.length;
+    document.getElementById("chSumInstances").textContent = rows.reduce(function (s, r) { return s + r.housesAffected; }, 0);
+    document.getElementById("chSumTotalMoved").textContent = fmtAmount(rows.reduce(function (s, r) { return s + r.totalMoved; }, 0)) || "$0.00";
+    document.getElementById("chFilterCount").textContent = rows.length + " cost codes";
+
+    tbody.innerHTML = "";
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="6" style="color:var(--text-muted)">No budget changes over this threshold yet.</td></tr>';
+      return;
+    }
+    rows.forEach(function (r) {
+      var tr = document.createElement("tr");
+      tr.className = "changes-row";
+      tr.innerHTML =
+        "<td>" + escapeHtml(r.code) + "</td>" +
+        "<td>" + escapeHtml(r.category || "") + "</td>" +
+        "<td>" + escapeHtml(r.label || "") + "</td>" +
+        '<td class="num-col">' + r.housesAffected + "</td>" +
+        '<td class="num-col">' + fmtAmount(r.totalMoved) + "</td>" +
+        '<td class="num-col">' + fmtAmount(r.avgChange) + "</td>";
+      tr.addEventListener("click", function () {
+        var existing = tr.nextElementSibling;
+        if (existing && existing.classList.contains("changes-detail-row")) { existing.remove(); return; }
+        var detailTr = document.createElement("tr");
+        detailTr.className = "changes-detail-row";
+        var listHtml = r.instances.slice().sort(function (a, b) { return Math.abs(b.diff) - Math.abs(a.diff); }).map(function (i) {
+          var amtCls = i.diff > 0 ? "critical" : "ok";
+          // fmtAmount() already wraps a negative in parens on its own -- only add a "+"
+          // for positive amounts, never extra enclosing parens (that doubled them up).
+          return "<li>" + escapeHtml(i.address) + " (" + escapeHtml(i.house) + "): " +
+            (i.to !== null ? fmtAmount(i.from) + " → " + fmtAmount(i.to) : "removed (was " + fmtAmount(i.from) + ")") +
+            ' <b style="color:var(--' + amtCls + ')">' + (i.diff > 0 ? "+" : "") + fmtAmount(i.diff) + "</b></li>";
+        }).join("");
+        detailTr.innerHTML = '<td colspan="6"><div class="budget-detail-groups"><div class="budget-detail-group"><ul>' + listHtml + "</ul></div></div></td>";
+        tr.insertAdjacentElement("afterend", detailTr);
+      });
+      tbody.appendChild(tr);
+    });
+  }
+
+  [document.getElementById("chThreshold"), document.getElementById("chSort")].forEach(function (el) {
+    el.addEventListener("input", renderChangesReportView);
+    el.addEventListener("change", renderChangesReportView);
+  });
 
   renderAlertsPanel();
   renderBatchWorklist();
